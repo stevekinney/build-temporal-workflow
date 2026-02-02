@@ -27,6 +27,18 @@ await Bun.build({
   external: ['@temporalio/*', 'esbuild'],
 });
 
+// Build Vite plugin
+await Bun.build({
+  entrypoints: ['./src/vite-plugin.ts'],
+  outdir: './dist',
+  target: 'node',
+  format: 'esm',
+  naming: '[dir]/[name].js',
+  sourcemap: 'external',
+  minify: true,
+  external: ['@temporalio/*', 'esbuild', 'vite'],
+});
+
 await $`bunx tsc --declaration --emitDeclarationOnly --project tsconfig.build.json`;
 
 console.log('Build complete!');
