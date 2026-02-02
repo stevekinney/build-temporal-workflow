@@ -102,3 +102,6 @@ repomix-output.xml
 .env
 .env.local
 .env.*.local
+
+# Temporary test artifacts
+.tmp/
