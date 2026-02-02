@@ -204,6 +204,15 @@ export default [
     },
   },
 
+  // Benchmark fixtures - relaxed rules for synthetic workflow code
+  {
+    files: ['bench/fixtures/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+      'unused-imports/no-unused-vars': 'off',
+    },
+  },
+
   // Put Prettier last to switch off conflicting stylistic rules
   eslintConfigPrettier,
 ];

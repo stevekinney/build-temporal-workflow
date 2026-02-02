@@ -13,6 +13,9 @@
     "bundle-temporal-workflow": "./dist/cli.js"
   },
   "scripts": {
+    "benchmark": "bun run bench/cli.ts",
+    "benchmark:full": "bun run bench/cli.ts -r 10 -w 3",
+    "benchmark:quick": "bun run bench/cli.ts -r 3 -w 1 -f small",
     "build": "bun run scripts/build.ts",
     "clean": "rm -rf dist coverage tsconfig.tsbuildinfo",
     "dev": "bun --watch run src/index.ts",
