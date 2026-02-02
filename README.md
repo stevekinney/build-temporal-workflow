@@ -1,6 +1,6 @@
 # build-temporal-workflow
 
-A faster alternative to Temporal's `bundleWorkflowCode` that uses esbuild instead of Webpack. Bundles Temporal workflow code **5-8x faster** with significantly lower memory usage.
+A faster alternative to Temporal's `bundleWorkflowCode` that uses esbuild instead of Webpack. Bundles Temporal workflow code **6-7x faster** with significantly lower memory usage.
 
 ## Why Use This?
 
@@ -8,8 +8,8 @@ The Temporal TypeScript SDK uses Webpack to bundle workflow code. This works fin
 
 This package replaces the Webpack bundler with esbuild, providing:
 
-- **5-8x faster builds** — From ~150-180ms down to ~20-30ms
-- **75-90% less memory** — From 8-13MB down to 1-3MB peak heap usage
+- **6-7x faster builds** — From ~130-150ms down to ~20ms
+- **55-70% less memory** — From 8-10MB down to 2.5-4MB peak heap usage
 - **Watch mode** — Rebuild automatically on file changes with esbuild's incremental builds
 - **Better error messages** — Dependency chain analysis shows exactly how a forbidden module got imported
 - **Static analysis** — Detect non-deterministic patterns before they cause replay failures
@@ -59,19 +59,19 @@ Measured on Apple M1 Max with Bun 1.3.2:
 
 | Fixture              |    esbuild |      Webpack |  Speedup |
 | -------------------- | ---------: | -----------: | -------: |
-| Small (~5 modules)   | 24ms ± 3ms | 179ms ± 20ms | **7.5x** |
-| Medium (~20 modules) | 30ms ± 5ms |  160ms ± 7ms | **5.3x** |
-| Large (~50+ modules) | 31ms ± 7ms |  174ms ± 1ms | **5.7x** |
-| Heavy dependencies   | 24ms ± 4ms | 155ms ± 13ms | **6.6x** |
+| Small (~5 modules)   | 20ms ± 4ms | 140ms ± 16ms | **7.0x** |
+| Medium (~20 modules) | 21ms ± 2ms | 142ms ± 13ms | **6.8x** |
+| Large (~50+ modules) | 21ms ± 1ms |  152ms ± 4ms | **7.4x** |
+| Heavy dependencies   | 19ms ± 2ms |  127ms ± 9ms | **6.9x** |
 
 Memory usage comparison (peak heap):
 
-| Fixture    | esbuild | Webpack |   Savings |
-| ---------- | ------: | ------: | --------: |
-| Small      |  1.9 MB |  7.3 MB |  75% less |
-| Medium     |   ~0 MB | 13.3 MB | 100% less |
-| Large      |  1.8 MB | 12.6 MB |  86% less |
-| Heavy deps |  2.8 MB | 11.1 MB |  75% less |
+| Fixture    | esbuild | Webpack |  Savings |
+| ---------- | ------: | ------: | -------: |
+| Small      |  3.6 MB |  8.4 MB | 57% less |
+| Medium     |  3.6 MB |  9.1 MB | 60% less |
+| Large      |  3.7 MB |  9.4 MB | 61% less |
+| Heavy deps |  2.5 MB |  8.4 MB | 70% less |
 
 Run benchmarks yourself:
 

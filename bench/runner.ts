@@ -58,20 +58,45 @@ async function runIteration(
   adapter: BundlerAdapter,
   workflowsPath: string,
 ): Promise<BenchmarkMeasurement> {
-  // Force GC before measurement
+  // Force GC before measurement to get clean baseline
   forceGC();
+  await Bun.sleep(10); // Allow GC to complete
+
   const startMemory = getHeapUsed();
+  let peakMemory = startMemory;
+
+  // Track peak memory during execution with high-frequency sampling
+  const memoryInterval = setInterval(() => {
+    const current = getHeapUsed();
+    if (current > peakMemory) {
+      peakMemory = current;
+    }
+  }, 1);
+
   const startTime = performance.now();
 
   // Run the bundler
-  const output = await adapter.bundle(workflowsPath);
+  let output;
+  try {
+    output = await adapter.bundle(workflowsPath);
+  } finally {
+    clearInterval(memoryInterval);
+  }
 
   const endTime = performance.now();
+
+  // Check final memory as well
   const endMemory = getHeapUsed();
+  if (endMemory > peakMemory) {
+    peakMemory = endMemory;
+  }
+
+  // Use peak memory delta (more reliable than end-start which can be negative after GC)
+  const memoryUsed = peakMemory - startMemory;
 
   return {
     timeMs: endTime - startTime,
-    memoryBytes: Math.max(0, endMemory - startMemory),
+    memoryBytes: Math.max(0, memoryUsed),
     bundleSize: output.size,
   };
 }
