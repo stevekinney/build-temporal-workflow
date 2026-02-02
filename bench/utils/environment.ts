@@ -142,8 +142,8 @@ export function formatEnvironment(env: EnvironmentInfo): string {
 
   return [
     `Platform: ${env.platform} (${env.arch})`,
+    `Runtime: Node ${env.nodeVersion}`,
     `Bun: ${env.bunVersion}`,
-    `Node: ${env.nodeVersion}`,
     `CPU: ${env.cpuModel} (${env.cpuCores} cores)`,
     `Memory: ${memoryGB} GB`,
     `Timestamp: ${env.timestamp}`,

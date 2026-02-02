@@ -2,7 +2,8 @@
  * Main benchmark runner.
  */
 
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createEsbuildAdapter, createWebpackAdapter } from './adapters';
 import type {
@@ -31,22 +32,22 @@ import { clearBenchmarkMarks, createBenchmarkMarker } from './utils/timing';
 const DEFAULT_FIXTURES: FixtureConfig[] = [
   {
     name: 'small',
-    workflowsPath: join(import.meta.dir, 'fixtures/small/workflows.ts'),
+    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/small/workflows.ts'),
     description: 'Small fixture (~5 modules, baseline)',
   },
   {
     name: 'medium',
-    workflowsPath: join(import.meta.dir, 'fixtures/medium/workflows.ts'),
+    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/medium/workflows.ts'),
     description: 'Medium fixture (~20 modules, realistic)',
   },
   {
     name: 'large',
-    workflowsPath: join(import.meta.dir, 'fixtures/large/workflows.ts'),
+    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/large/workflows.ts'),
     description: 'Large fixture (~50+ modules, stress test)',
   },
   {
     name: 'heavy-deps',
-    workflowsPath: join(import.meta.dir, 'fixtures/heavy-deps/workflows.ts'),
+    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/heavy-deps/workflows.ts'),
     description: 'Heavy dependencies fixture',
   },
 ];

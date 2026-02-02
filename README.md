@@ -1,6 +1,6 @@
 # build-temporal-workflow
 
-A faster alternative to Temporal's `bundleWorkflowCode` that uses esbuild instead of Webpack. Bundles Temporal workflow code **6-7x faster** with significantly lower memory usage.
+A faster alternative to Temporal's `bundleWorkflowCode` that uses esbuild instead of Webpack. Bundles Temporal workflow code **~8x faster** with significantly lower memory usage.
 
 ## Why Use This?
 
@@ -8,8 +8,8 @@ The Temporal TypeScript SDK uses Webpack to bundle workflow code. This works fin
 
 This package replaces the Webpack bundler with esbuild, providing:
 
-- **4-6x faster builds** — Measured with statistical rigor (95% CI, outlier filtering)
-- **30-50% less memory** — Consistent memory savings across all fixture sizes
+- **7-8x faster builds** — Measured with statistical rigor (95% CI, outlier filtering)
+- **44-65% less memory** — Consistent memory savings across all fixture sizes
 - **Watch mode** — Rebuild automatically on file changes with esbuild's incremental builds
 - **Better error messages** — Dependency chain analysis shows exactly how a forbidden module got imported
 - **Static analysis** — Detect non-deterministic patterns before they cause replay failures
@@ -55,23 +55,23 @@ const worker = await Worker.create({
 
 ## Performance Benchmarks
 
-Measured on Apple M1 Max with Bun 1.3.2:
+Measured on Apple M1 Max with Node v24.3.0:
 
-| Fixture              |     esbuild |      Webpack |  Speedup |
-| -------------------- | ----------: | -----------: | -------: |
-| Small (~5 modules)   |  35ms ± 6ms | 205ms ± 32ms | **5.9x** |
-| Medium (~20 modules) | 48ms ± 23ms | 252ms ± 30ms | **5.2x** |
-| Large (~50+ modules) | 66ms ± 22ms | 324ms ± 60ms | **4.9x** |
-| Heavy dependencies   | 48ms ± 12ms | 167ms ± 30ms | **3.4x** |
+| Fixture              |    esbuild |     Webpack |  Speedup |
+| -------------------- | ---------: | ----------: | -------: |
+| Small (~5 modules)   | 16ms ± 2ms | 132ms ± 7ms | **8.0x** |
+| Medium (~20 modules) | 18ms ± 2ms | 138ms ± 4ms | **7.7x** |
+| Large (~50+ modules) | 20ms ± 2ms | 154ms ± 5ms | **7.7x** |
+| Heavy dependencies   | 17ms ± 2ms | 130ms ± 5ms | **7.4x** |
 
 Memory usage comparison (peak heap):
 
 | Fixture    | esbuild | Webpack |  Savings |
 | ---------- | ------: | ------: | -------: |
-| Small      |  5.6 MB |  9.9 MB | 43% less |
-| Medium     |  5.4 MB | 10.2 MB | 47% less |
-| Large      |  7.1 MB | 12.1 MB | 41% less |
-| Heavy deps |  5.9 MB |  8.7 MB | 32% less |
+| Small      | 4.65 MB | 8.31 MB | 44% less |
+| Medium     | 3.22 MB | 9.05 MB | 64% less |
+| Large      | 3.51 MB | 9.55 MB | 63% less |
+| Heavy deps | 3.01 MB | 8.52 MB | 65% less |
 
 Run benchmarks yourself:
 

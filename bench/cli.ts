@@ -1,9 +1,8 @@
-#!/usr/bin/env bun
 /**
  * CLI for running benchmarks.
  *
  * Usage:
- *   bun run bench/cli.ts [options]
+ *   bun benchmark [options]
  *
  * Options:
  *   -f, --fixture <name>   Run specific fixture(s), comma-separated
@@ -125,7 +124,7 @@ function printHelp(): void {
 Temporal Workflow Bundler Benchmark
 
 Usage:
-  bun run bench/cli.ts [options]
+  bun benchmark [options]
 
 Options:
   -f, --fixture <name>   Run specific fixture(s), comma-separated
@@ -151,22 +150,22 @@ Statistical Notes:
 
 Examples:
   # Run quick benchmark with small fixture
-  bun run bench/cli.ts -f small -r 5 -w 2
+  bun benchmark:quick
 
   # Run full benchmark suite
-  bun run bench/cli.ts -r 15 -w 5
+  bun benchmark:full
 
   # Compare only esbuild on all fixtures
-  bun run bench/cli.ts -b esbuild -v
+  bun benchmark -- -b esbuild -v
 
   # Export results as JSON
-  bun run bench/cli.ts -o json --file results.json
+  bun benchmark -- -o json --file results.json
 
   # Export results as markdown
-  bun run bench/cli.ts -o markdown --file BENCHMARK.md
+  bun benchmark -- -o markdown --file BENCHMARK.md
 
   # Disable outlier filtering
-  bun run bench/cli.ts --no-filter-outliers
+  bun benchmark -- --no-filter-outliers
 `);
 }
 

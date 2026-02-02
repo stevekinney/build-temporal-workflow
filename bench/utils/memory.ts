@@ -4,22 +4,16 @@
 
 /**
  * Force garbage collection if available.
- * In Bun, this is available via Bun.gc().
+ * Requires Node to be run with --expose-gc.
  */
 export function forceGC(): void {
-  if (typeof Bun !== 'undefined' && typeof Bun.gc === 'function') {
-    Bun.gc(true); // Force synchronous GC
-  }
+  global.gc?.();
 }
 
 /**
  * Get current heap memory usage in bytes.
  */
 export function getHeapUsed(): number {
-  if (typeof Bun !== 'undefined') {
-    // Bun provides memory info through process.memoryUsage()
-    return process.memoryUsage().heapUsed;
-  }
   return process.memoryUsage().heapUsed;
 }
 
@@ -104,14 +98,14 @@ export async function waitForGCStabilization(
   threshold = 0.05,
 ): Promise<{ stabilized: boolean; attempts: number; finalHeap: number }> {
   forceGC();
-  await Bun.sleep(10);
+  await new Promise((resolve) => setTimeout(resolve, 10));
 
   let prevHeap = getHeapUsed();
   let attempts = 1;
 
   for (let i = 1; i < maxAttempts; i++) {
     forceGC();
-    await Bun.sleep(10);
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const currentHeap = getHeapUsed();
     const change = Math.abs(currentHeap - prevHeap) / prevHeap;

@@ -17,9 +17,9 @@
     "bundle-temporal-workflow": "./dist/cli.js"
   },
   "scripts": {
-    "benchmark": "bun run bench/cli.ts",
-    "benchmark:full": "bun run bench/cli.ts -r 10 -w 3",
-    "benchmark:quick": "bun run bench/cli.ts -r 3 -w 1 -f small",
+    "benchmark": "node --expose-gc --import tsx/esm bench/cli.ts",
+    "benchmark:full": "node --expose-gc --import tsx/esm bench/cli.ts -r 10 -w 3",
+    "benchmark:quick": "node --expose-gc --import tsx/esm bench/cli.ts -r 3 -w 1 -f small",
     "build": "bun run scripts/build.ts",
     "clean": "rm -rf dist coverage tsconfig.tsbuildinfo",
     "dev": "bun --watch run src/index.ts",
@@ -92,6 +92,7 @@
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
     "sort-package-json": "^3.6.0",
+    "tsx": "^4.21.0",
     "typescript-eslint": "^8.50.0",
     "unified": "^11.0.5",
     "unist-util-remove": "^4.0.0"
