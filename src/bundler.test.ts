@@ -361,4 +361,40 @@ describe('WorkflowCodeBundler', () => {
       expect(bundle.metadata?.mode).toBe('production');
     });
   });
+
+  describe('cross-runtime support', () => {
+    it('bundles with Deno-style import map', async () => {
+      const bundle = await bundleWorkflowCode({
+        workflowsPath: resolve(fixturesDir, 'deno-style/workflows.ts'),
+        denoConfigPath: resolve(fixturesDir, 'deno-style/deno.json'),
+      });
+
+      expect(bundle.code).toBeDefined();
+      expect(bundle.code.length).toBeGreaterThan(0);
+      // The helper should be bundled
+      expect(bundle.code).toContain('formatGreeting');
+    });
+
+    it('auto-detects Deno flavor from deno.json', async () => {
+      const bundle = await bundleWorkflowCode({
+        workflowsPath: resolve(fixturesDir, 'deno-style/workflows.ts'),
+        inputFlavor: 'auto',
+      });
+
+      expect(bundle.code).toBeDefined();
+      // The helper should be bundled via import map
+      expect(bundle.code).toContain('formatGreeting');
+    });
+
+    it('bundles with explicit node flavor', async () => {
+      // Basic workflow should work with node flavor
+      const bundle = await bundleWorkflowCode({
+        workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        inputFlavor: 'node',
+      });
+
+      expect(bundle.code).toBeDefined();
+      expect(bundle.code).toContain('__TEMPORAL__');
+    });
+  });
 });

@@ -33,8 +33,12 @@ export type {
   BundleMetadata,
   BundleOptions,
   BundlerPlugin,
+  CrossRuntimeConfig,
   DeterminismPolicy,
+  ImportMap,
+  InputFlavor,
   Logger,
+  UrlImportCache,
   ValidationResult,
   WorkflowBundle,
   WorkflowBundleErrorCode,
@@ -65,3 +69,18 @@ export {
   formatDependencyChain,
   summarizeDependencyChain,
 } from './dependency-chain';
+
+// Cross-runtime support (for Deno/Bun input)
+export {
+  createCrossRuntimePlugin,
+  detectForbiddenRuntimeApis,
+  detectInputFlavor,
+  isNpmSpecifier,
+  isUrlImport,
+  isUrlPinned,
+  loadImportMap,
+  parseDenoConfig,
+  parseImportMap,
+  parseNpmSpecifier,
+  resolveCrossRuntimeConfig,
+} from './cross-runtime';

@@ -10,6 +10,7 @@ import { dirname, join, parse } from 'node:path';
 
 import * as esbuild from 'esbuild';
 
+import { createCrossRuntimePlugin, resolveCrossRuntimeConfig } from './cross-runtime';
 import { findAllDependencyChains, formatDependencyChain } from './dependency-chain';
 import { generateEntrypoint, hashEntrypoint } from './entrypoint';
 import { WorkflowBundleError } from './errors';
@@ -20,6 +21,7 @@ import type {
   BundleMetadata,
   BundleOptions,
   BundlerPlugin,
+  InputFlavor,
   Logger,
   WorkflowBundle,
 } from './types';
@@ -133,6 +135,9 @@ export class WorkflowCodeBundler {
   readonly buildOptions: Partial<esbuild.BuildOptions> | undefined;
   readonly plugins: BundlerPlugin[];
   readonly report: boolean;
+  readonly inputFlavor: InputFlavor | undefined;
+  readonly denoConfigPath: string | undefined;
+  readonly importMapPath: string | undefined;
 
   constructor(options: BundleOptions) {
     // Apply bundler plugins
@@ -155,6 +160,9 @@ export class WorkflowCodeBundler {
     this.buildOptions = resolvedOptions.buildOptions;
     this.plugins = plugins;
     this.report = resolvedOptions.report !== false;
+    this.inputFlavor = resolvedOptions.inputFlavor;
+    this.denoConfigPath = resolvedOptions.denoConfigPath;
+    this.importMapPath = resolvedOptions.importMapPath;
 
     // Validate user options
     validateUserOptions(this.buildOptions);
@@ -199,6 +207,24 @@ export class WorkflowCodeBundler {
       policy,
     });
 
+    // Create the cross-runtime plugin for Deno/Bun input support
+    const crossRuntimeConfig = resolveCrossRuntimeConfig(
+      this.workflowsPath,
+      this.inputFlavor,
+      this.denoConfigPath,
+      this.importMapPath,
+    );
+    const crossRuntimePlugin = createCrossRuntimePlugin(
+      crossRuntimeConfig,
+      this.workflowsPath,
+    );
+
+    this.logger.debug('Cross-runtime config', {
+      inputFlavor: crossRuntimeConfig.inputFlavor,
+      denoConfigPath: crossRuntimeConfig.denoConfigPath,
+      importMapPath: crossRuntimeConfig.importMapPath,
+    });
+
     // Build with esbuild
     const warnings: string[] = [];
     let result: esbuild.BuildResult;
@@ -226,8 +252,12 @@ export class WorkflowCodeBundler {
         outfile: 'workflow-bundle.js',
         metafile: true,
 
-        // Plugins
-        plugins: [temporalPlugin, ...(this.buildOptions?.plugins ?? [])],
+        // Plugins: cross-runtime first (for import map resolution), then temporal
+        plugins: [
+          crossRuntimePlugin,
+          temporalPlugin,
+          ...(this.buildOptions?.plugins ?? []),
+        ],
       });
     } catch (error) {
       // Re-throw WorkflowBundleError directly

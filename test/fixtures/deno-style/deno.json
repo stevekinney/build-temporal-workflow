@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@/": "./src/",
+    "workflow-helpers": "./src/helpers.ts"
+  }
+}

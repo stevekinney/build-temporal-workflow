@@ -111,6 +111,25 @@ export interface BundleOptions {
    * Default: true
    */
   report?: boolean | undefined;
+
+  /**
+   * Input flavor for cross-runtime support.
+   * Allows bundling Deno or Bun-flavored TypeScript.
+   * Default: 'auto'
+   */
+  inputFlavor?: InputFlavor | undefined;
+
+  /**
+   * Path to deno.json or deno.jsonc config file.
+   * Used for import maps and compiler options.
+   */
+  denoConfigPath?: string | undefined;
+
+  /**
+   * Path to an import map file.
+   * Takes precedence over import map in deno.json.
+   */
+  importMapPath?: string | undefined;
 }
 
 /**
@@ -248,4 +267,103 @@ export interface WorkflowBundleErrorContext {
    * Configuration violations
    */
   violations?: string[];
+}
+
+/**
+ * Input flavor for cross-runtime support.
+ *
+ * - 'node': Standard Node.js/npm imports (default)
+ * - 'deno': Deno-style imports (URL imports, npm: specifiers, import maps)
+ * - 'bun': Bun-style imports (similar to Node but with bun: builtins)
+ * - 'auto': Auto-detect based on config files and import patterns
+ */
+export type InputFlavor = 'node' | 'deno' | 'bun' | 'auto';
+
+/**
+ * Import map structure (compatible with Deno and browsers).
+ * See: https://deno.land/manual/basics/import_maps
+ */
+export interface ImportMap {
+  /**
+   * Direct module mappings.
+   * Example: { "lodash": "npm:lodash@4.17.21" }
+   */
+  imports?: Record<string, string>;
+
+  /**
+   * Scoped mappings that only apply within certain paths.
+   * Example: { "/src/": { "lodash": "./local-lodash.ts" } }
+   */
+  scopes?: Record<string, Record<string, string>>;
+}
+
+/**
+ * Configuration for cross-runtime input support.
+ */
+export interface CrossRuntimeConfig {
+  /**
+   * Input flavor to use.
+   * Default: 'auto'
+   */
+  inputFlavor?: InputFlavor | undefined;
+
+  /**
+   * Path to deno.json or deno.jsonc config file.
+   * Used for import maps and compiler options.
+   */
+  denoConfigPath?: string | undefined;
+
+  /**
+   * Path to an import map file (import_map.json).
+   * Takes precedence over import map in deno.json.
+   */
+  importMapPath?: string | undefined;
+
+  /**
+   * Directory for caching fetched URL imports.
+   * Default: node_modules/.cache/temporal-bundler
+   */
+  urlCacheDir?: string | undefined;
+
+  /**
+   * Whether to allow URL imports.
+   * Default: true for deno flavor, false otherwise
+   */
+  allowUrlImports?: boolean | undefined;
+
+  /**
+   * Whether to require pinned versions for URL imports.
+   * Default: true (recommended for reproducibility)
+   */
+  requirePinnedUrls?: boolean | undefined;
+}
+
+/**
+ * Cached URL import metadata for reproducibility.
+ */
+export interface UrlImportCache {
+  /**
+   * The original URL
+   */
+  url: string;
+
+  /**
+   * Local file path where the content is cached
+   */
+  localPath: string;
+
+  /**
+   * SHA-256 hash of the content for integrity verification
+   */
+  integrity: string;
+
+  /**
+   * When the URL was fetched
+   */
+  fetchedAt: string;
+
+  /**
+   * Content-Type from the response
+   */
+  contentType?: string | undefined;
 }
