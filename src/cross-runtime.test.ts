@@ -10,12 +10,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import {
   detectForbiddenRuntimeApis,
   detectInputFlavor,
+  findDenoConfig,
   isNpmSpecifier,
   isUrlImport,
   isUrlPinned,
   parseDenoConfig,
   parseImportMap,
   parseNpmSpecifier,
+  resolveCrossRuntimeConfig,
   urlToCacheKey,
 } from './cross-runtime';
 
@@ -358,6 +360,72 @@ describe('cross-runtime', () => {
       const source = `const data = await Deno.readFile('file.txt');`;
       const forbidden = detectForbiddenRuntimeApis(source, 'node');
       expect(forbidden.length).toBe(0);
+    });
+  });
+
+  describe('findDenoConfig', () => {
+    it('finds deno.json in the same directory', () => {
+      const projectDir = join(testDir, 'find-deno-same');
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, 'deno.json'), '{}');
+      writeFileSync(join(projectDir, 'workflows.ts'), '');
+
+      const result = findDenoConfig(join(projectDir, 'workflows.ts'));
+      expect(result).toBe(join(projectDir, 'deno.json'));
+    });
+
+    it('finds deno.json in a parent directory', () => {
+      const rootDir = join(testDir, 'find-deno-parent');
+      const subDir = join(rootDir, 'src', 'workflows');
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(rootDir, 'deno.json'), '{}');
+      writeFileSync(join(subDir, 'index.ts'), '');
+
+      const result = findDenoConfig(join(subDir, 'index.ts'));
+      expect(result).toBe(join(rootDir, 'deno.json'));
+    });
+
+    it('returns undefined when no deno config exists', () => {
+      // Nest deep enough that parent traversal won't find configs from other test fixtures
+      const projectDir = join(testDir, 'find-deno-none', 'a', 'b', 'c', 'd');
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, 'workflows.ts'), '');
+
+      const result = findDenoConfig(join(projectDir, 'workflows.ts'));
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('resolveCrossRuntimeConfig', () => {
+    it('infers denoConfigPath from parent directory when not provided', () => {
+      const rootDir = join(testDir, 'resolve-deno-infer');
+      const subDir = join(rootDir, 'src', 'workflows');
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(
+        join(rootDir, 'deno.json'),
+        JSON.stringify({ imports: { lodash: 'npm:lodash@4' } }),
+      );
+      writeFileSync(join(subDir, 'index.ts'), '');
+
+      const config = resolveCrossRuntimeConfig(join(subDir, 'index.ts'));
+      expect(config.inputFlavor).toBe('deno');
+      expect(config.denoConfigPath).toBe(join(rootDir, 'deno.json'));
+    });
+
+    it('does not override explicit denoConfigPath', () => {
+      const rootDir = join(testDir, 'resolve-deno-explicit');
+      const subDir = join(rootDir, 'src');
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(rootDir, 'deno.json'), '{}');
+      writeFileSync(join(subDir, 'workflows.ts'), '');
+
+      const explicitPath = join(rootDir, 'deno.json');
+      const config = resolveCrossRuntimeConfig(
+        join(subDir, 'workflows.ts'),
+        undefined,
+        explicitPath,
+      );
+      expect(config.denoConfigPath).toBe(explicitPath);
     });
   });
 });

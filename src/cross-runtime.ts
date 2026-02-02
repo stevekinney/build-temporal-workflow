@@ -67,23 +67,16 @@ const DENO_FORBIDDEN_APIS = [
 const BUN_FORBIDDEN_BUILTINS = ['bun:sqlite', 'bun:ffi', 'bun:jsc', 'bun:test'];
 
 /**
- * Detect the input flavor based on config files and project structure.
+ * Walk the workflows directory and up to 3 parent directories to find a deno.json or deno.jsonc.
+ * Returns the resolved path if found, undefined otherwise.
  */
-export function detectInputFlavor(workflowsPath: string): InputFlavor {
+export function findDenoConfig(workflowsPath: string): string | undefined {
   const dir = dirname(resolve(workflowsPath));
 
-  // Check for Deno config files
-  if (
-    existsSync(join(dir, 'deno.json')) ||
-    existsSync(join(dir, 'deno.jsonc')) ||
-    existsSync(join(dir, 'import_map.json'))
-  ) {
-    return 'deno';
-  }
-
-  // Check for Bun config
-  if (existsSync(join(dir, 'bunfig.toml'))) {
-    return 'bun';
+  // Check immediate directory
+  for (const name of ['deno.json', 'deno.jsonc']) {
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
   }
 
   // Check parent directories (up to 3 levels)
@@ -93,12 +86,37 @@ export function detectInputFlavor(workflowsPath: string): InputFlavor {
     if (parentDir === currentDir) break;
     currentDir = parentDir;
 
-    if (
-      existsSync(join(currentDir, 'deno.json')) ||
-      existsSync(join(currentDir, 'deno.jsonc'))
-    ) {
-      return 'deno';
+    for (const name of ['deno.json', 'deno.jsonc']) {
+      const candidate = join(currentDir, name);
+      if (existsSync(candidate)) return candidate;
     }
+  }
+
+  return undefined;
+}
+
+/**
+ * Detect the input flavor based on config files and project structure.
+ */
+export function detectInputFlavor(workflowsPath: string): InputFlavor {
+  const dir = dirname(resolve(workflowsPath));
+
+  // Check for Deno config files (including import_map.json in immediate dir)
+  if (findDenoConfig(workflowsPath) || existsSync(join(dir, 'import_map.json'))) {
+    return 'deno';
+  }
+
+  // Check for Bun config
+  if (existsSync(join(dir, 'bunfig.toml'))) {
+    return 'bun';
+  }
+
+  // Check parent directories for Bun config
+  let currentDir = dir;
+  for (let i = 0; i < 3; i++) {
+    const parentDir = dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
 
     if (existsSync(join(currentDir, 'bunfig.toml'))) {
       return 'bun';
@@ -633,9 +651,13 @@ export function resolveCrossRuntimeConfig(
       ? detectInputFlavor(workflowsPath)
       : inputFlavor;
 
+  const resolvedDenoConfigPath =
+    denoConfigPath ??
+    (resolvedFlavor === 'deno' ? findDenoConfig(workflowsPath) : undefined);
+
   return {
     inputFlavor: resolvedFlavor,
-    denoConfigPath,
+    denoConfigPath: resolvedDenoConfigPath,
     importMapPath,
     allowUrlImports: resolvedFlavor === 'deno',
     requirePinnedUrls: true,
