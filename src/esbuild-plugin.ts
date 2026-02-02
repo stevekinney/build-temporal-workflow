@@ -72,6 +72,12 @@ export interface TemporalPluginState {
   foundProblematicModules: Map<string, string>;
 
   /**
+   * Map of forbidden modules imported transitively from node_modules -> importer path.
+   * These are warnings, not errors, since they are unlikely to be reached at runtime.
+   */
+  transitiveForbiddenModules: Map<string, string>;
+
+  /**
    * List of files with dynamic imports (break replay determinism)
    */
   dynamicImports: Array<{ file: string; line: number; column: number }>;
@@ -243,6 +249,7 @@ export function createTemporalPlugin(
   // Shared state for post-build validation
   const state: TemporalPluginState = {
     foundProblematicModules: new Map(),
+    transitiveForbiddenModules: new Map(),
     dynamicImports: [],
   };
 
@@ -294,7 +301,15 @@ export function createTemporalPlugin(
         }
 
         // Forbidden builtin - record and return stub
-        foundProblematicModules.set(normalized, args.importer || 'unknown');
+        const importer = args.importer || 'unknown';
+        if (
+          importer.includes('/node_modules/') ||
+          importer.includes('\\node_modules\\')
+        ) {
+          state.transitiveForbiddenModules.set(normalized, importer);
+        } else {
+          foundProblematicModules.set(normalized, importer);
+        }
         return {
           path: normalized,
           namespace: 'temporal-forbidden',
@@ -388,7 +403,15 @@ export function createTemporalPlugin(
           }
 
           // Record for error reporting and return a stub to prevent esbuild errors
-          foundProblematicModules.set(normalized, args.importer || 'unknown');
+          const importer = args.importer || 'unknown';
+          if (
+            importer.includes('/node_modules/') ||
+            importer.includes('\\node_modules\\')
+          ) {
+            state.transitiveForbiddenModules.set(normalized, importer);
+          } else {
+            foundProblematicModules.set(normalized, importer);
+          }
           return {
             path: normalized,
             namespace: 'temporal-forbidden',

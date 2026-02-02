@@ -79,6 +79,7 @@ export default [
   {
     ignores: [
       '**/{dist,build,coverage,.bun}/**',
+      '**/.tmp/**',
       '**/node_modules/**',
       '**/*.lock',
       '**/README.md',

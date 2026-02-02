@@ -352,6 +352,15 @@ export class WorkflowCodeBundler {
       });
     }
 
+    // Transitive forbidden modules from node_modules are warnings, not errors
+    if (pluginState.transitiveForbiddenModules.size > 0) {
+      for (const [mod, importer] of pluginState.transitiveForbiddenModules) {
+        const msg = `Transitive forbidden module '${mod}' imported from ${importer} (inside node_modules). This is unlikely to be reached at runtime.`;
+        warnings.push(msg);
+        this.logger.warn(msg);
+      }
+    }
+
     // Extract warnings
     if (result.warnings.length > 0) {
       for (const warning of result.warnings) {
