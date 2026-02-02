@@ -12,6 +12,8 @@ await Bun.build({
   naming: '[dir]/[name].js',
   sourcemap: 'external',
   minify: true,
+  // Mark peer dependencies and their transitive deps as external
+  external: ['@temporalio/*', 'esbuild'],
 });
 
 await $`bunx tsc --declaration --emitDeclarationOnly --project tsconfig.build.json`;
