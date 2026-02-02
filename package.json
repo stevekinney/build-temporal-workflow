@@ -18,6 +18,7 @@
   },
   "scripts": {
     "benchmark": "node --expose-gc --import tsx/esm bench/cli.ts",
+    "benchmark:bun": "bun bench/cli.ts -b esbuild,bun",
     "benchmark:full": "node --expose-gc --import tsx/esm bench/cli.ts -r 10 -w 3",
     "benchmark:quick": "node --expose-gc --import tsx/esm bench/cli.ts -r 3 -w 1 -f small",
     "build": "bun run scripts/build.ts",

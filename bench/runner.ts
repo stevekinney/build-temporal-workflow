@@ -5,7 +5,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createEsbuildAdapter, createWebpackAdapter } from './adapters';
+import { createBunAdapter, createEsbuildAdapter, createWebpackAdapter } from './adapters';
 import type {
   BenchmarkMeasurement,
   BenchmarkResult,
@@ -56,7 +56,12 @@ const DEFAULT_FIXTURES: FixtureConfig[] = [
  * Default bundler adapters.
  */
 function getDefaultBundlers(): BundlerAdapter[] {
-  return [createEsbuildAdapter(), createWebpackAdapter()];
+  const bundlers: BundlerAdapter[] = [createEsbuildAdapter(), createWebpackAdapter()];
+  // Include Bun adapter when running under Bun
+  if (typeof globalThis.Bun?.build === 'function') {
+    bundlers.push(createBunAdapter());
+  }
+  return bundlers;
 }
 
 /**
@@ -373,5 +378,9 @@ export function getFixtures(): FixtureConfig[] {
  * Get available bundler names.
  */
 export function getBundlerNames(): string[] {
-  return ['esbuild', 'webpack'];
+  const names = ['esbuild', 'webpack'];
+  if (typeof globalThis.Bun?.build === 'function') {
+    names.push('bun');
+  }
+  return names;
 }

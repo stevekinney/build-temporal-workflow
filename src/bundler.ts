@@ -10,6 +10,7 @@ import { dirname, join, parse } from 'node:path';
 
 import * as esbuild from 'esbuild';
 
+import { bunBuildBundle, resolveBundlerBackend } from './bun-bundler';
 import { createCrossRuntimePlugin, resolveCrossRuntimeConfig } from './cross-runtime';
 import { findAllDependencyChains, formatDependencyChain } from './dependency-chain';
 import { generateEntrypoint, hashEntrypoint } from './entrypoint';
@@ -144,6 +145,7 @@ export class WorkflowCodeBundler {
   readonly inputFlavor: InputFlavor | undefined;
   readonly denoConfigPath: string | undefined;
   readonly importMapPath: string | undefined;
+  readonly bundler: 'esbuild' | 'bun';
 
   constructor(options: BundleOptions) {
     // Apply bundler plugins
@@ -169,15 +171,36 @@ export class WorkflowCodeBundler {
     this.inputFlavor = resolvedOptions.inputFlavor;
     this.denoConfigPath = resolvedOptions.denoConfigPath;
     this.importMapPath = resolvedOptions.importMapPath;
+    this.bundler = resolveBundlerBackend(resolvedOptions.bundler, this.logger);
 
-    // Validate user options
-    validateUserOptions(this.buildOptions);
+    // Validate user options (only relevant for esbuild backend)
+    if (this.bundler === 'esbuild') {
+      validateUserOptions(this.buildOptions);
+    }
   }
 
   /**
    * Create the workflow bundle.
    */
   async createBundle(): Promise<WorkflowBundle> {
+    // Use Bun.build backend if selected
+    if (this.bundler === 'bun') {
+      return bunBuildBundle({
+        workflowsPath: this.workflowsPath,
+        workflowInterceptorModules: this.workflowInterceptorModules,
+        payloadConverterPath: this.payloadConverterPath,
+        failureConverterPath: this.failureConverterPath,
+        ignoreModules: this.ignoreModules,
+        mode: this.mode,
+        sourceMap: this.sourceMap,
+        report: this.report,
+        inputFlavor: this.inputFlavor,
+        denoConfigPath: this.denoConfigPath,
+        importMapPath: this.importMapPath,
+        logger: this.logger,
+      });
+    }
+
     const startTime = Date.now();
 
     // Validate workflowsPath exists
@@ -499,6 +522,15 @@ export class WorkflowCodeBundler {
    * ```
    */
   async createContext(): Promise<BundleContext> {
+    if (this.bundler === 'bun') {
+      throw new WorkflowBundleError('CONFIG_INVALID', {
+        violations: [
+          'createContext() is not supported with the Bun bundler backend. ' +
+            'Use bundler: "esbuild" or call createBundle() instead.',
+        ],
+      });
+    }
+
     // Validate workflowsPath exists
     if (!existsSync(this.workflowsPath)) {
       throw new WorkflowBundleError('ENTRYPOINT_NOT_FOUND', {
@@ -545,6 +577,15 @@ export class WorkflowCodeBundler {
     stop(): Promise<void>;
     readonly running: boolean;
   }> {
+    if (this.bundler === 'bun') {
+      throw new WorkflowBundleError('CONFIG_INVALID', {
+        violations: [
+          'watch() is not supported with the Bun bundler backend. ' +
+            'Use bundler: "esbuild" for watch mode.',
+        ],
+      });
+    }
+
     // Validate workflowsPath exists
     if (!existsSync(this.workflowsPath)) {
       throw new WorkflowBundleError('ENTRYPOINT_NOT_FOUND', {

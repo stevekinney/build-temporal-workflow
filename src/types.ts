@@ -97,6 +97,15 @@ export interface BundleOptions {
   buildOptions?: Partial<esbuild.BuildOptions> | undefined;
 
   /**
+   * Which bundler backend to use.
+   * - 'esbuild': Always use esbuild (works on Node and Bun)
+   * - 'bun': Always use Bun.build (requires Bun runtime)
+   * - 'auto': Use esbuild (default, best plugin compatibility)
+   * Default: 'auto'
+   */
+  bundler?: 'esbuild' | 'bun' | 'auto' | undefined;
+
+  /**
    * List of plugins to register with the bundler.
    */
   plugins?: BundlerPlugin[] | undefined;
