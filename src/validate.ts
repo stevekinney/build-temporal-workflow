@@ -341,28 +341,48 @@ export function validateBundleStructure(code: string): ValidationResult {
 }
 
 /**
+ * Cached version strings to avoid repeated package.json reads.
+ */
+let cachedTemporalSdkVersion: string | undefined | null = null;
+let cachedBundlerVersion: string | undefined;
+
+/**
  * Get the Temporal SDK version from the installed package.
+ * Result is cached after first call.
  */
 export function getTemporalSdkVersion(): string | undefined {
+  if (cachedTemporalSdkVersion !== null) {
+    return cachedTemporalSdkVersion;
+  }
+
   try {
     // Try to read version from @temporalio/workflow package.json
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require('@temporalio/workflow/package.json') as { version?: string };
-    return typeof pkg.version === 'string' ? pkg.version : undefined;
+    cachedTemporalSdkVersion = typeof pkg.version === 'string' ? pkg.version : undefined;
   } catch {
-    return undefined;
+    cachedTemporalSdkVersion = undefined;
   }
+
+  return cachedTemporalSdkVersion;
 }
 
 /**
  * Get the bundler version.
+ * Result is cached after first call.
  */
 export function getBundlerVersion(): string {
+  if (cachedBundlerVersion !== undefined) {
+    return cachedBundlerVersion;
+  }
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require('../package.json') as { version?: string };
-    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+    cachedBundlerVersion = typeof pkg.version === 'string' ? pkg.version : '0.0.0';
   } catch {
-    return '0.0.0';
+    cachedBundlerVersion = '0.0.0';
   }
+
+  return cachedBundlerVersion;
 }

@@ -18,6 +18,7 @@ import { createTemporalPlugin } from './esbuild-plugin';
 import { loadDeterminismPolicy } from './policy';
 import { generateBundleHash, shimEsbuildOutput, validateShimmedOutput } from './shim';
 import type {
+  BundleContext,
   BundleMetadata,
   BundleOptions,
   BundlerPlugin,
@@ -86,6 +87,11 @@ const ENFORCED_OPTIONS: Partial<esbuild.BuildOptions> = {
 
   // SAFETY: Preserve names for workflow type inference
   keepNames: true,
+
+  // Performance options
+  logLevel: 'silent', // Reduce I/O overhead
+  charset: 'utf8', // Skip charset detection
+  legalComments: 'none', // Smaller output, remove license comments
 };
 
 /**
@@ -468,6 +474,65 @@ export class WorkflowCodeBundler {
         temporalPlugin,
         ...(this.buildOptions?.plugins ?? []),
       ],
+    };
+  }
+
+  /**
+   * Create a reusable build context for repeated builds.
+   *
+   * This is useful for test suites where the same workflow bundle
+   * needs to be rebuilt multiple times. Using a context avoids the
+   * overhead of recreating esbuild contexts and parsing plugins.
+   *
+   * @example
+   * ```typescript
+   * const bundler = new WorkflowCodeBundler({ workflowsPath: './src/workflows' });
+   * const context = await bundler.createContext();
+   *
+   * try {
+   *   const bundle1 = await context.rebuild();
+   *   // ... modify workflow files ...
+   *   const bundle2 = await context.rebuild(); // Much faster
+   * } finally {
+   *   await context.dispose();
+   * }
+   * ```
+   */
+  async createContext(): Promise<BundleContext> {
+    // Validate workflowsPath exists
+    if (!existsSync(this.workflowsPath)) {
+      throw new WorkflowBundleError('ENTRYPOINT_NOT_FOUND', {
+        details: `Path does not exist: ${this.workflowsPath}`,
+      });
+    }
+
+    const entrypointOptions = {
+      workflowsPath: this.workflowsPath,
+      workflowInterceptorModules: this.workflowInterceptorModules,
+      payloadConverterPath: this.payloadConverterPath,
+      failureConverterPath: this.failureConverterPath,
+    };
+    const entryHash = hashEntrypoint(entrypointOptions);
+
+    // Create build options
+    const buildOptions = this.createBuildOptions();
+
+    // Create esbuild context
+    const ctx = await esbuild.context(buildOptions);
+
+    this.logger.debug('Created reusable build context', {
+      workflowsPath: this.workflowsPath,
+    });
+
+    return {
+      rebuild: async (): Promise<WorkflowBundle> => {
+        const result = await ctx.rebuild();
+        return this.processBuildResult(result, entryHash);
+      },
+      dispose: async (): Promise<void> => {
+        await ctx.dispose();
+        this.logger.debug('Disposed build context');
+      },
     };
   }
 

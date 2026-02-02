@@ -369,6 +369,27 @@ export interface UrlImportCache {
 }
 
 /**
+ * A reusable build context for repeated builds.
+ *
+ * This is useful for test suites where the same workflow bundle
+ * needs to be rebuilt multiple times with the same configuration.
+ * Using a context avoids the overhead of recreating esbuild contexts.
+ */
+export interface BundleContext {
+  /**
+   * Rebuild the bundle using the existing context.
+   * Much faster than creating a new bundler for each build.
+   */
+  rebuild(): Promise<WorkflowBundle>;
+
+  /**
+   * Dispose of the context and free resources.
+   * Must be called when done with the context.
+   */
+  dispose(): Promise<void>;
+}
+
+/**
  * Information about a single workflow in the bundle.
  */
 export interface WorkflowInfo {

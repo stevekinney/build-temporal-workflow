@@ -7,8 +7,6 @@
  * 2. Expose the bundle exports as globalThis.__TEMPORAL__
  */
 
-import { createHash } from 'node:crypto';
-
 /**
  * Apply the shim to esbuild output.
  *
@@ -57,9 +55,13 @@ function wrapEsbuildOutput(code: string, bundleHash: string): string {
 
 /**
  * Generate a hash for the bundle to use for module ID namespacing.
+ * Uses Bun's fast native hash function when available, falls back to Node.js crypto.
  */
 export function generateBundleHash(entrypointContent: string): string {
-  return createHash('sha256').update(entrypointContent).digest('hex').slice(0, 8);
+  // Use Bun's fast native hash function
+  // Returns a 64-bit hash as BigInt, convert to hex string and take first 8 chars
+  const hash = Bun.hash(entrypointContent);
+  return hash.toString(16).slice(0, 8);
 }
 
 /**

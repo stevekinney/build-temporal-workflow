@@ -199,8 +199,12 @@ function getCacheKey(options: BundleOptions): string {
 
 /**
  * Generate a hash of the workflow file(s) for cache invalidation.
+ *
+ * @param workflowsPath - Path to the workflow file or directory
+ * @param useContentHash - If true, compute a hash of the file content instead of using mtime.
+ *                         More reliable but slower. Recommended for CI environments.
  */
-function getFileHash(workflowsPath: string): string {
+function getFileHash(workflowsPath: string, useContentHash = false): string {
   const resolvedPath = resolve(workflowsPath);
 
   if (!existsSync(resolvedPath)) {
@@ -209,8 +213,14 @@ function getFileHash(workflowsPath: string): string {
 
   const stat = statSync(resolvedPath);
 
-  // Use mtime as a simple hash
-  // In production, you'd want a content hash, but mtime is faster
+  // Use content hash for more reliable cache invalidation
+  if (useContentHash && stat.isFile()) {
+    const content = readFileSync(resolvedPath);
+    // Use Bun's fast hash function
+    return Bun.hash(content).toString(16);
+  }
+
+  // Use mtime as a simple hash (faster, but less reliable across file systems)
   return `${stat.mtime.getTime()}:${stat.size}`;
 }
 
@@ -223,6 +233,14 @@ export interface GetCachedBundleOptions extends BundleOptions {
    * Default: false
    */
   forceRebuild?: boolean;
+
+  /**
+   * Use content-based hashing for cache invalidation.
+   * More reliable than mtime-based hashing but slightly slower.
+   * Recommended for CI environments where mtime may not be reliable.
+   * Default: false
+   */
+  useContentHash?: boolean;
 }
 
 /**
@@ -297,7 +315,7 @@ export async function getCachedBundle(
   options: GetCachedBundleOptions,
 ): Promise<WorkflowBundle> {
   const cacheKey = getCacheKey(options);
-  const fileHash = getFileHash(options.workflowsPath);
+  const fileHash = getFileHash(options.workflowsPath, options.useContentHash);
 
   // Check cache
   if (!options.forceRebuild) {

@@ -106,6 +106,32 @@ export function isForbidden(module: string, policy: DeterminismPolicy): boolean 
 }
 
 /**
+ * Pre-resolved module override paths.
+ * These are resolved once at module load time to avoid repeated require.resolve() calls.
+ */
+const MODULE_OVERRIDE_PATHS = new Map<string, string>();
+
+/**
+ * Initialize module override paths at module load time.
+ * This pre-resolves all known allowed builtin overrides.
+ */
+function initModuleOverridePaths(): void {
+  for (const mod of ALLOWED_BUILTINS) {
+    try {
+      const path = require.resolve(
+        `@temporalio/worker/lib/workflow/module-overrides/${mod}.js`,
+      );
+      MODULE_OVERRIDE_PATHS.set(mod, path);
+    } catch {
+      // Module override not available, will throw at runtime if requested
+    }
+  }
+}
+
+// Initialize paths when module loads
+initModuleOverridePaths();
+
+/**
  * Get the path to a module override stub from the installed Temporal SDK.
  *
  * @param moduleName - The builtin module name (e.g., 'assert', 'url', 'util')
@@ -119,11 +145,19 @@ export function getModuleOverridePath(moduleName: string): string {
     throw new Error(`No module override available for '${moduleName}'`);
   }
 
-  // Resolve from installed @temporalio/worker package
+  // Check pre-resolved cache first
+  const cached = MODULE_OVERRIDE_PATHS.get(normalized);
+  if (cached) {
+    return cached;
+  }
+
+  // Fallback: resolve from installed @temporalio/worker package (shouldn't happen normally)
   try {
-    return require.resolve(
+    const path = require.resolve(
       `@temporalio/worker/lib/workflow/module-overrides/${normalized}.js`,
     );
+    MODULE_OVERRIDE_PATHS.set(normalized, path);
+    return path;
   } catch {
     throw new Error(
       `Could not find Temporal module override for '${moduleName}'. ` +

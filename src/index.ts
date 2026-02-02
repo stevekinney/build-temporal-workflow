@@ -50,6 +50,7 @@ export { WorkflowBundleError } from './errors';
 
 // Types
 export type {
+  BundleContext,
   BundleMetadata,
   BundleOptions,
   BundlerPlugin,

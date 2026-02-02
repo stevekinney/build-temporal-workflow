@@ -34,6 +34,12 @@ function createBuiltinPattern(): RegExp {
   return new RegExp(`^(node:)?(${escaped.join('|')})(/.*)?$`);
 }
 
+/**
+ * Pre-computed builtin pattern at module load time.
+ * This pattern is deterministic and doesn't need to be regenerated per build.
+ */
+const BUILTIN_PATTERN = createBuiltinPattern();
+
 export interface TemporalPluginOptions {
   /**
    * Modules to ignore (will throw at runtime if used)
@@ -233,7 +239,6 @@ export function createTemporalPlugin(
 ): TemporalPluginResult {
   const { ignoreModules, payloadConverterPath, failureConverterPath } = options;
   const policy = options.policy ?? loadDeterminismPolicy();
-  const builtinPattern = createBuiltinPattern();
 
   // Shared state for post-build validation
   const state: TemporalPluginState = {
@@ -254,7 +259,7 @@ export function createTemporalPlugin(
       // 1. Handle ALL Node.js builtins with a single handler
       // This ensures we intercept them before esbuild's default handling
       // ============================================================
-      build.onResolve({ filter: builtinPattern }, (args) => {
+      build.onResolve({ filter: BUILTIN_PATTERN }, (args) => {
         const normalized = normalizeSpecifier(args.path);
         const baseName = normalized.split('/')[0] ?? normalized;
 
@@ -356,11 +361,9 @@ export function createTemporalPlugin(
       build.onResolve({ filter: /.*/ }, (args) => {
         const normalized = normalizeSpecifier(args.path);
 
-        // Builtins are already handled by the builtinPattern handler above
-        // This is a safety check that can be removed if performance is critical
-        if (isAllowedBuiltin(normalized)) {
-          return null;
-        }
+        // Note: Builtins are already handled by BUILTIN_PATTERN handler above.
+        // The builtin pattern handler runs first and handles all node: and bare builtin
+        // module specifiers, so we don't need to re-check isAllowedBuiltin here.
 
         // Check if this is an ignored module - return stub that throws at runtime
         if (isIgnored(normalized, ignoreModules)) {
@@ -430,6 +433,12 @@ export function createTemporalPlugin(
       // resolved at runtime may differ between original and replay.
       // ============================================================
       build.onLoad({ filter: /\.[mc]?[jt]sx?$/ }, (args) => {
+        // Skip node_modules - we only care about user workflow code
+        // This significantly improves performance by avoiding scanning dependencies
+        if (args.path.includes('node_modules')) {
+          return undefined;
+        }
+
         // Read file contents (may already be cached)
         let contents = importerContentsCache.get(args.path);
         if (!contents) {
@@ -474,6 +483,13 @@ export function createTemporalPlugin(
 
         // Return undefined to continue with default loading
         return undefined;
+      });
+
+      // ============================================================
+      // 6. Clean up cache after build to free memory
+      // ============================================================
+      build.onEnd(() => {
+        importerContentsCache.clear();
       });
 
       // Note: We don't throw in onEnd because esbuild wraps the error and loses type info.
