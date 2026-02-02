@@ -257,6 +257,35 @@ console.log(diff.changed); // Modified workflows
 
 ## API Reference
 
+### WorkflowCodeBundler
+
+Class-based API for more control over the bundling lifecycle. Supports reusable build contexts and watch mode.
+
+```typescript
+import { WorkflowCodeBundler } from 'build-temporal-workflow';
+
+const bundler = new WorkflowCodeBundler({
+  workflowsPath: './src/workflows.ts',
+});
+
+// One-off build
+const bundle = await bundler.createBundle();
+
+// Reusable context for repeated builds (e.g., test suites)
+const ctx = await bundler.createContext();
+const bundle1 = await ctx.rebuild();
+// ... modify workflow files ...
+const bundle2 = await ctx.rebuild(); // Much faster
+await ctx.dispose();
+
+// Watch mode
+const handle = await bundler.watch((bundle, error) => {
+  if (error) console.error(error);
+  else console.log('Rebuilt:', bundle.code.length, 'bytes');
+});
+await handle.stop();
+```
+
 ### bundleWorkflowCode(options)
 
 Bundle workflow code for use with Temporal Worker.
@@ -319,6 +348,19 @@ interface WorkflowBundle {
 }
 ```
 
+### createConsoleLogger()
+
+Create a console-based logger for development. Compatible with the `Logger` option.
+
+```typescript
+import { createConsoleLogger, bundleWorkflowCode } from 'build-temporal-workflow';
+
+const bundle = await bundleWorkflowCode({
+  workflowsPath: './src/workflows.ts',
+  logger: createConsoleLogger(),
+});
+```
+
 ### watchWorkflowCode(options, callback)
 
 Watch for changes and rebuild automatically.
@@ -343,18 +385,41 @@ await handle.stop();
 
 ### getCachedBundle(options)
 
-Get a bundle, using cache when possible.
+Get a bundle, using cache when possible. Cache is invalidated when workflow files change.
 
 ```typescript
-import { getCachedBundle, clearBundleCache } from 'build-temporal-workflow';
+import {
+  getCachedBundle,
+  clearBundleCache,
+  getBundleCacheStats,
+} from 'build-temporal-workflow';
 
 const bundle = await getCachedBundle({
   workflowsPath: './src/workflows',
   forceRebuild: false, // Set true to bypass cache
+  useContentHash: true, // Content-based invalidation (recommended for CI)
 });
 
 // Clear all cached bundles
 clearBundleCache();
+
+// Inspect cache state
+const stats = getBundleCacheStats();
+console.log(`${stats.size} bundles cached`);
+```
+
+### preloadBundles(optionsList)
+
+Preload multiple bundles into the cache concurrently. Useful for warming up the cache before running tests.
+
+```typescript
+import { preloadBundles } from 'build-temporal-workflow';
+
+await preloadBundles([
+  { workflowsPath: './src/workflows/order.ts' },
+  { workflowsPath: './src/workflows/user.ts' },
+  { workflowsPath: './src/workflows/notification.ts' },
+]);
 ```
 
 ### loadBundle(options)
@@ -402,6 +467,16 @@ const result = await analyzeReplaySafety({
 
 // Format for display
 console.log(formatReplayViolations(result.violations));
+
+// Analyze a single file
+const fileResult = analyzeFileReplaySafety(
+  './src/workflows/order.ts',
+  REPLAY_UNSAFE_PATTERNS,
+);
+
+// Access the built-in pattern list
+import { REPLAY_UNSAFE_PATTERNS } from 'build-temporal-workflow';
+console.log(REPLAY_UNSAFE_PATTERNS.map((p) => p.name));
 ```
 
 ### generateManifest(options)
@@ -409,7 +484,12 @@ console.log(formatReplayViolations(result.violations));
 Generate a manifest of workflow exports.
 
 ```typescript
-import { generateManifest, compareManifests } from 'build-temporal-workflow';
+import {
+  generateManifest,
+  compareManifests,
+  serializeManifest,
+  parseManifest,
+} from 'build-temporal-workflow';
 
 const manifest = generateManifest({
   workflowsPath: './src/workflows',
@@ -419,6 +499,10 @@ const manifest = generateManifest({
 
 // Compare two manifests
 const diff = compareManifests(oldManifest, newManifest);
+
+// Serialize/deserialize for storage
+const json = serializeManifest(manifest);
+const restored = parseManifest(json);
 ```
 
 ### validateBundle(bundle, options)
@@ -426,7 +510,11 @@ const diff = compareManifests(oldManifest, newManifest);
 Validate a bundle is properly structured.
 
 ```typescript
-import { validateBundle, validateBundleStructure } from 'build-temporal-workflow';
+import {
+  validateBundle,
+  validateBundleDetailed,
+  validateBundleStructure,
+} from 'build-temporal-workflow';
 
 // Quick structure check
 const structureResult = validateBundleStructure(bundle.code);
@@ -438,6 +526,161 @@ if (!structureResult.valid) {
 const result = validateBundle(bundle, {
   workerVersion: '1.14.0',
 });
+
+// Detailed validation with separate errors and warnings
+const detailed = validateBundleDetailed(bundle, {
+  expectedSdkVersion: '1.14.0',
+  strictVersionCheck: true,
+  validateStructure: true,
+});
+
+if (!detailed.valid) {
+  console.error('Errors:', detailed.errors);
+}
+if (detailed.warnings.length > 0) {
+  console.warn('Warnings:', detailed.warnings);
+}
+console.log('Metadata:', detailed.metadata);
+```
+
+### WorkflowBundleError
+
+Structured error class thrown when bundling fails. Contains a machine-readable `code` and contextual information.
+
+```typescript
+import { WorkflowBundleError } from 'build-temporal-workflow';
+
+try {
+  await bundleWorkflowCode({ workflowsPath: './src/workflows.ts' });
+} catch (error) {
+  if (error instanceof WorkflowBundleError) {
+    console.log(error.code); // e.g. 'FORBIDDEN_MODULES', 'DYNAMIC_IMPORT'
+    console.log(error.context); // { modules, details, hint, dependencyChain, violations }
+  }
+}
+```
+
+Error codes: `FORBIDDEN_MODULES`, `DYNAMIC_IMPORT`, `RESOLUTION_FAILED`, `IGNORED_MODULE_USED`, `CONFIG_INVALID`, `BUILD_FAILED`, `ENTRYPOINT_NOT_FOUND`.
+
+### Advanced: Determinism Policy
+
+Low-level functions for inspecting and working with the module determinism policy.
+
+```typescript
+import {
+  loadDeterminismPolicy,
+  moduleMatches,
+  normalizeSpecifier,
+  isForbidden,
+  isAllowedBuiltin,
+  getModuleOverridePath,
+  ALLOWED_BUILTINS,
+} from 'build-temporal-workflow';
+
+const policy = loadDeterminismPolicy();
+
+// Check if a module is forbidden
+isForbidden('fs', policy); // true
+isForbidden('lodash', policy); // false
+
+// Check if a module has a Temporal stub
+isAllowedBuiltin('assert'); // true
+
+// Normalize specifiers (strips node: prefix, etc.)
+normalizeSpecifier('node:fs'); // 'fs'
+
+// Check if a user module matches any in a list
+moduleMatches('node:fs', ['fs']); // true
+
+// Get path to the Temporal stub for an allowed builtin
+getModuleOverridePath('assert'); // path to stub
+
+// Built-in allowed modules
+console.log(ALLOWED_BUILTINS); // ['assert', 'url', 'util']
+```
+
+### Advanced: esbuild Plugin
+
+Create the Temporal esbuild plugin directly for custom build pipelines.
+
+```typescript
+import { createTemporalPlugin } from 'build-temporal-workflow';
+
+const { plugin, state } = createTemporalPlugin({
+  ignoreModules: ['dns'],
+  policy: loadDeterminismPolicy(),
+});
+
+// Use `plugin` in your own esbuild.build() call
+// After build, inspect `state.foundProblematicModules` and `state.dynamicImports`
+```
+
+### Advanced: Dependency Chain Analysis
+
+Analyze how forbidden modules are reached from the entrypoint using esbuild metafile data.
+
+```typescript
+import {
+  findDependencyChain,
+  findAllDependencyChains,
+  formatDependencyChain,
+  summarizeDependencyChain,
+} from 'build-temporal-workflow';
+
+// Find the import chain to a specific module
+const chain = findDependencyChain(metafile, problematicModules, 'fs');
+
+// Find chains for all problematic modules
+const allChains = findAllDependencyChains(metafile, problematicModules);
+
+// Format for display
+const formatted = formatDependencyChain(chain); // ['workflows.ts', '→ helper.ts', '→ fs']
+const summary = summarizeDependencyChain(chain); // 'workflows.ts → helper.ts → fs'
+```
+
+### Advanced: Cross-Runtime Utilities
+
+Utilities for working with Deno and Bun import conventions.
+
+```typescript
+import {
+  detectInputFlavor,
+  resolveCrossRuntimeConfig,
+  createCrossRuntimePlugin,
+  parseDenoConfig,
+  parseImportMap,
+  loadImportMap,
+  isNpmSpecifier,
+  parseNpmSpecifier,
+  isUrlImport,
+  isUrlPinned,
+  detectForbiddenRuntimeApis,
+} from 'build-temporal-workflow';
+
+// Auto-detect runtime flavor from config files
+const flavor = detectInputFlavor('./src/workflows.ts'); // 'node' | 'deno' | 'bun'
+
+// Resolve full cross-runtime config
+const config = resolveCrossRuntimeConfig('./src/workflows.ts', 'auto');
+
+// Create an esbuild plugin for cross-runtime resolution
+const plugin = createCrossRuntimePlugin(config, './src/workflows.ts');
+
+// Parse Deno config and import maps
+const denoConfig = parseDenoConfig('./deno.json');
+const importMap = parseImportMap('./import_map.json');
+const resolvedMap = loadImportMap('./src/workflows.ts');
+
+// Work with npm: specifiers
+isNpmSpecifier('npm:lodash@4.17.21'); // true
+parseNpmSpecifier('npm:lodash@4.17.21'); // { name: 'lodash', version: '4.17.21', subpath: undefined }
+
+// Detect URL imports and pinning
+isUrlImport('https://deno.land/std/path/mod.ts'); // true
+isUrlPinned('https://deno.land/std@0.200.0/path/mod.ts'); // true
+
+// Detect forbidden runtime-specific APIs in source
+const violations = detectForbiddenRuntimeApis(sourceCode, 'deno');
 ```
 
 ## CLI
