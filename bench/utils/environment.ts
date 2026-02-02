@@ -3,9 +3,12 @@
  */
 
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
+import { join } from 'node:path';
 
 import type { EnvironmentInfo } from '../types';
+import { isHighResolutionTimingAvailable, measureTimerResolution } from './timing';
 
 /**
  * Get the Bun version.
@@ -54,9 +57,66 @@ function getTotalMemory(): number {
 }
 
 /**
+ * Get the current git commit hash (short).
+ */
+function getGitCommit(): string | undefined {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Check if the git working directory is dirty.
+ */
+function isGitDirty(): boolean | undefined {
+  try {
+    const status = execSync('git status --porcelain', { encoding: 'utf-8' }).trim();
+    return status.length > 0;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Get key dependency versions from package.json.
+ */
+function getDependencyVersions(): Record<string, string> {
+  const deps: Record<string, string> = {};
+  const keyDeps = ['esbuild', 'webpack', '@temporalio/workflow', '@temporalio/worker'];
+
+  try {
+    const packageJsonPath = join(process.cwd(), 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+
+    const allDeps = {
+      ...packageJson.dependencies,
+      ...packageJson.devDependencies,
+    };
+
+    for (const dep of keyDeps) {
+      if (allDeps[dep]) {
+        deps[dep] = allDeps[dep].replace(/^[\^~]/, '');
+      }
+    }
+  } catch {
+    // Ignore errors reading package.json
+  }
+
+  return deps;
+}
+
+/**
  * Capture complete environment information.
  */
 export function captureEnvironment(): EnvironmentInfo {
+  const timerResolution = measureTimerResolution(20);
+  const highResTiming = isHighResolutionTimingAvailable();
+  const gitCommit = getGitCommit();
+  const gitDirty = isGitDirty();
+  const dependencies = getDependencyVersions();
+
   return {
     platform: os.platform(),
     arch: os.arch(),
@@ -66,6 +126,11 @@ export function captureEnvironment(): EnvironmentInfo {
     cpuCores: getCpuCores(),
     totalMemory: getTotalMemory(),
     timestamp: new Date().toISOString(),
+    timerResolutionUs: timerResolution,
+    highResTimingAvailable: highResTiming,
+    gitCommit,
+    gitDirty,
+    dependencies: Object.keys(dependencies).length > 0 ? dependencies : undefined,
   };
 }
 

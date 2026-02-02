@@ -8,10 +8,11 @@
  * Options:
  *   -f, --fixture <name>   Run specific fixture(s), comma-separated
  *   -b, --bundler <name>   Run specific bundler(s), comma-separated
- *   -r, --runs <n>         Number of measured runs (default: 5)
- *   -w, --warmup <n>       Number of warmup runs (default: 2)
+ *   -r, --runs <n>         Number of measured runs (default: 15)
+ *   -w, --warmup <n>       Number of warmup runs (default: 5)
  *   -o, --output <format>  Output format: console, json, markdown (default: console)
  *   --file <path>          Write results to file
+ *   --no-filter-outliers   Disable outlier filtering
  *   -v, --verbose          Show detailed progress
  *   -h, --help             Show help
  */
@@ -32,15 +33,17 @@ interface CliOptions {
   file?: string;
   verbose: boolean;
   help: boolean;
+  filterOutliers: boolean;
 }
 
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
-    runs: 5,
-    warmup: 2,
+    runs: 15,
+    warmup: 5,
     output: 'console',
     verbose: false,
     help: false,
+    filterOutliers: true,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -100,6 +103,10 @@ function parseArgs(args: string[]): CliOptions {
         options.verbose = true;
         break;
 
+      case '--no-filter-outliers':
+        options.filterOutliers = false;
+        break;
+
       case '-h':
       case '--help':
         options.help = true;
@@ -123,10 +130,11 @@ Usage:
 Options:
   -f, --fixture <name>   Run specific fixture(s), comma-separated
   -b, --bundler <name>   Run specific bundler(s), comma-separated
-  -r, --runs <n>         Number of measured runs (default: 5)
-  -w, --warmup <n>       Number of warmup runs (default: 2)
+  -r, --runs <n>         Number of measured runs (default: 15)
+  -w, --warmup <n>       Number of warmup runs (default: 5)
   -o, --output <format>  Output format: console, json, markdown (default: console)
   --file <path>          Write results to file
+  --no-filter-outliers   Disable outlier filtering (IQR method)
   -v, --verbose          Show detailed progress
   -h, --help             Show this help
 
@@ -136,12 +144,17 @@ ${fixtures.map((f) => `  ${f.name.padEnd(12)} ${f.description}`).join('\n')}
 Available Bundlers:
 ${bundlers.map((b) => `  ${b}`).join('\n')}
 
+Statistical Notes:
+  - Results include 95% confidence intervals
+  - Outliers are filtered using the IQR method by default
+  - Significance: * p<0.05, ** p<0.01
+
 Examples:
   # Run quick benchmark with small fixture
-  bun run bench/cli.ts -f small -r 3 -w 1
+  bun run bench/cli.ts -f small -r 5 -w 2
 
   # Run full benchmark suite
-  bun run bench/cli.ts -r 10 -w 3
+  bun run bench/cli.ts -r 15 -w 5
 
   # Compare only esbuild on all fixtures
   bun run bench/cli.ts -b esbuild -v
@@ -151,6 +164,9 @@ Examples:
 
   # Export results as markdown
   bun run bench/cli.ts -o markdown --file BENCHMARK.md
+
+  # Disable outlier filtering
+  bun run bench/cli.ts --no-filter-outliers
 `);
 }
 
@@ -214,6 +230,7 @@ async function main(): Promise<void> {
     fixtures: options.fixtures,
     bundlers: options.bundlers,
     verbose: options.verbose,
+    filterOutliers: options.filterOutliers,
   };
 
   console.log('Starting benchmark suite...\n');

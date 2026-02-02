@@ -15,8 +15,15 @@ import type {
   RunnerOptions,
 } from './types';
 import { captureEnvironment } from './utils/environment';
-import { forceGC, getHeapUsed } from './utils/memory';
-import { calculateStats } from './utils/stats';
+import {
+  calculateCpuDelta,
+  createGCObserver,
+  getCpuUsage,
+  getHeapUsed,
+  waitForGCStabilization,
+} from './utils/memory';
+import { calculateExtendedStats, cohensD, welchTTest } from './utils/stats';
+import { clearBenchmarkMarks, createBenchmarkMarker } from './utils/timing';
 
 /**
  * Default fixtures to benchmark.
@@ -57,10 +64,10 @@ function getDefaultBundlers(): BundlerAdapter[] {
 async function runIteration(
   adapter: BundlerAdapter,
   workflowsPath: string,
+  iterationName?: string,
 ): Promise<BenchmarkMeasurement> {
-  // Force GC before measurement to get clean baseline
-  forceGC();
-  await Bun.sleep(10); // Allow GC to complete
+  // Wait for GC to stabilize before measurement
+  await waitForGCStabilization(3, 0.05);
 
   const startMemory = getHeapUsed();
   let peakMemory = startMemory;
@@ -73,6 +80,17 @@ async function runIteration(
     }
   }, 1);
 
+  // Set up GC observer
+  const gcObserver = createGCObserver();
+  gcObserver.start();
+
+  // Get CPU usage at start
+  const startCpu = getCpuUsage();
+
+  // Create benchmark marker for User Timing API
+  const marker = createBenchmarkMarker(iterationName ?? `benchmark-${Date.now()}`);
+  marker.start();
+
   const startTime = performance.now();
 
   // Run the bundler
@@ -84,6 +102,14 @@ async function runIteration(
   }
 
   const endTime = performance.now();
+  marker.end();
+
+  // Get CPU usage at end
+  const endCpu = getCpuUsage();
+  const cpuDelta = calculateCpuDelta(startCpu, endCpu);
+
+  // Stop GC observer
+  const gcMetrics = gcObserver.stop();
 
   // Check final memory as well
   const endMemory = getHeapUsed();
@@ -98,6 +124,10 @@ async function runIteration(
     timeMs: endTime - startTime,
     memoryBytes: Math.max(0, memoryUsed),
     bundleSize: output.size,
+    cpuUser: cpuDelta.user,
+    cpuSystem: cpuDelta.system,
+    gcTimeMs: gcMetrics.totalTimeMs,
+    gcCount: gcMetrics.count,
   };
 }
 
@@ -110,15 +140,19 @@ async function benchmarkFixture(
   runs: number,
   warmup: number,
   verbose: boolean,
+  filterOutliers: boolean,
 ): Promise<BenchmarkResult> {
+  // Clear any existing benchmark marks
+  clearBenchmarkMarks();
+
   if (verbose) {
-    console.log(`  ${adapter.name}: warming up...`);
+    console.log(`  ${adapter.name}: warming up (${warmup} runs)...`);
   }
 
   // Warmup runs (discarded)
   for (let i = 0; i < warmup; i++) {
     try {
-      await runIteration(adapter, fixture.workflowsPath);
+      await runIteration(adapter, fixture.workflowsPath, `warmup-${fixture.name}-${adapter.name}-${i}`);
     } catch (error) {
       // Warmup failure is acceptable, continue
       if (verbose) {
@@ -136,7 +170,11 @@ async function benchmarkFixture(
 
   for (let i = 0; i < runs; i++) {
     try {
-      const measurement = await runIteration(adapter, fixture.workflowsPath);
+      const measurement = await runIteration(
+        adapter,
+        fixture.workflowsPath,
+        `run-${fixture.name}-${adapter.name}-${i}`,
+      );
       measurements.push(measurement);
 
       if (verbose) {
@@ -145,11 +183,12 @@ async function benchmarkFixture(
     } catch (error) {
       // If any run fails, record it and stop
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const emptyStats = calculateExtendedStats([], false);
       return {
         fixture: fixture.name,
         bundler: adapter.name,
-        time: calculateStats([]),
-        memory: calculateStats([]),
+        time: emptyStats,
+        memory: emptyStats,
         bundleSize: 0,
         measurements: [],
         success: false,
@@ -158,16 +197,28 @@ async function benchmarkFixture(
     }
   }
 
-  // Calculate statistics
+  // Calculate statistics with optional outlier filtering
   const times = measurements.map((m) => m.timeMs);
   const memories = measurements.map((m) => m.memoryBytes);
   const bundleSize = measurements[0]?.bundleSize ?? 0;
 
+  const timeStats = calculateExtendedStats(times, filterOutliers);
+  const memoryStats = calculateExtendedStats(memories, filterOutliers);
+
+  if (verbose && filterOutliers) {
+    if (timeStats.outliersRemoved > 0) {
+      console.log(`    Outliers removed (time): ${timeStats.outliersRemoved}`);
+    }
+    if (memoryStats.outliersRemoved > 0) {
+      console.log(`    Outliers removed (memory): ${memoryStats.outliersRemoved}`);
+    }
+  }
+
   return {
     fixture: fixture.name,
     bundler: adapter.name,
-    time: calculateStats(times),
-    memory: calculateStats(memories),
+    time: timeStats,
+    memory: memoryStats,
     bundleSize,
     measurements,
     success: true,
@@ -203,6 +254,14 @@ function calculateComparisons(results: BenchmarkResult[]): BundlerComparison[] {
       const slower = esbuildFaster ? 'webpack' : 'esbuild';
       const speedup = esbuildFaster ? webpackTime / esbuildTime : esbuildTime / webpackTime;
 
+      // Calculate statistical significance
+      const esbuildTimes = esbuild.measurements.map((m) => m.timeMs);
+      const webpackTimes = webpack.measurements.map((m) => m.timeMs);
+
+      const pValue = welchTTest(esbuildTimes, webpackTimes);
+      const effectSize = Math.abs(cohensD(esbuildTimes, webpackTimes));
+      const isSignificant = pValue < 0.05;
+
       comparisons.push({
         fixture,
         faster,
@@ -210,6 +269,9 @@ function calculateComparisons(results: BenchmarkResult[]): BundlerComparison[] {
         speedup,
         memoryDiff: webpack.memory.mean - esbuild.memory.mean,
         sizeDiff: webpack.bundleSize - esbuild.bundleSize,
+        isSignificant,
+        pValue,
+        effectSize,
       });
     }
   }
@@ -221,7 +283,14 @@ function calculateComparisons(results: BenchmarkResult[]): BundlerComparison[] {
  * Run the complete benchmark suite.
  */
 export async function runBenchmarks(options: RunnerOptions = {}): Promise<BenchmarkSuite> {
-  const { runs = 5, warmup = 2, fixtures: fixtureFilter, bundlers: bundlerFilter, verbose = false } = options;
+  const {
+    runs = 15,
+    warmup = 5,
+    fixtures: fixtureFilter,
+    bundlers: bundlerFilter,
+    verbose = false,
+    filterOutliers = true,
+  } = options;
 
   const startTime = performance.now();
 
@@ -232,6 +301,7 @@ export async function runBenchmarks(options: RunnerOptions = {}): Promise<Benchm
     console.log('Benchmark Configuration:');
     console.log(`  Runs: ${runs}`);
     console.log(`  Warmup: ${warmup}`);
+    console.log(`  Outlier filtering: ${filterOutliers ? 'enabled' : 'disabled'}`);
     console.log('');
   }
 
@@ -263,7 +333,7 @@ export async function runBenchmarks(options: RunnerOptions = {}): Promise<Benchm
     }
 
     for (const bundler of bundlers) {
-      const result = await benchmarkFixture(fixture, bundler, runs, warmup, verbose);
+      const result = await benchmarkFixture(fixture, bundler, runs, warmup, verbose, filterOutliers);
       results.push(result);
 
       if (verbose && result.success) {

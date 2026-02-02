@@ -53,6 +53,26 @@ export interface BenchmarkMeasurement {
    * Bundle size in bytes
    */
   bundleSize: number;
+
+  /**
+   * CPU time spent in user mode (milliseconds)
+   */
+  cpuUser?: number;
+
+  /**
+   * CPU time spent in system mode (milliseconds)
+   */
+  cpuSystem?: number;
+
+  /**
+   * Time spent in garbage collection (milliseconds)
+   */
+  gcTimeMs?: number;
+
+  /**
+   * Number of garbage collection events
+   */
+  gcCount?: number;
 }
 
 /**
@@ -93,6 +113,31 @@ export interface StatSummary {
    * Number of samples
    */
   count: number;
+}
+
+/**
+ * Extended statistical summary with additional metrics.
+ */
+export interface ExtendedStatSummary extends StatSummary {
+  /**
+   * Lower bound of 95% confidence interval
+   */
+  ci95Lower: number;
+
+  /**
+   * Upper bound of 95% confidence interval
+   */
+  ci95Upper: number;
+
+  /**
+   * Coefficient of variation (stdDev / mean * 100)
+   */
+  coefficientOfVariation: number;
+
+  /**
+   * Number of outliers removed (if outlier filtering was applied)
+   */
+  outliersRemoved: number;
 }
 
 /**
@@ -183,6 +228,31 @@ export interface EnvironmentInfo {
    * Timestamp when the benchmark started
    */
   timestamp: string;
+
+  /**
+   * Timer resolution in microseconds
+   */
+  timerResolutionUs?: number;
+
+  /**
+   * Whether high-resolution timing is available
+   */
+  highResTimingAvailable?: boolean;
+
+  /**
+   * Git commit hash (short)
+   */
+  gitCommit?: string;
+
+  /**
+   * Whether git working directory is dirty
+   */
+  gitDirty?: boolean;
+
+  /**
+   * Key dependency versions
+   */
+  dependencies?: Record<string, string>;
 }
 
 /**
@@ -268,6 +338,21 @@ export interface BundlerComparison {
    * Bundle size difference (slower - faster) in bytes
    */
   sizeDiff: number;
+
+  /**
+   * Whether the difference is statistically significant (p < 0.05)
+   */
+  isSignificant?: boolean;
+
+  /**
+   * P-value from Welch's t-test
+   */
+  pValue?: number;
+
+  /**
+   * Cohen's d effect size
+   */
+  effectSize?: number;
 }
 
 /**
@@ -276,13 +361,13 @@ export interface BundlerComparison {
 export interface RunnerOptions {
   /**
    * Number of measured runs per fixture/bundler
-   * @default 5
+   * @default 15
    */
   runs?: number;
 
   /**
    * Number of warmup runs to discard
-   * @default 2
+   * @default 5
    */
   warmup?: number;
 
@@ -301,6 +386,12 @@ export interface RunnerOptions {
    * @default false
    */
   verbose?: boolean;
+
+  /**
+   * Whether to filter outliers using IQR method
+   * @default true
+   */
+  filterOutliers?: boolean;
 }
 
 /**

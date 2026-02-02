@@ -3,7 +3,13 @@
  * Outputs README-friendly tables.
  */
 
-import type { BenchmarkReporter, BenchmarkResult, BenchmarkSuite } from '../types';
+import type {
+  BenchmarkReporter,
+  BenchmarkResult,
+  BenchmarkSuite,
+  BundlerComparison,
+  ExtendedStatSummary,
+} from '../types';
 import { formatBytes, formatMs, formatSpeedup } from '../utils/stats';
 
 /**
@@ -11,6 +17,28 @@ import { formatBytes, formatMs, formatSpeedup } from '../utils/stats';
  */
 function formatWithStdDev(mean: number, stdDev: number, formatter: (n: number) => string): string {
   return `${formatter(mean)} ± ${formatter(stdDev)}`;
+}
+
+/**
+ * Get significance indicator based on p-value.
+ */
+function getSignificanceIndicator(comparison: BundlerComparison | undefined): string {
+  if (!comparison || comparison.pValue === undefined) return '';
+  if (comparison.pValue < 0.01) return ' \\*\\*';
+  if (comparison.pValue < 0.05) return ' \\*';
+  return '';
+}
+
+/**
+ * Check if a stat summary is extended.
+ */
+function isExtendedStats(stats: unknown): stats is ExtendedStatSummary {
+  return (
+    typeof stats === 'object' &&
+    stats !== null &&
+    'ci95Lower' in stats &&
+    'ci95Upper' in stats
+  );
 }
 
 /**
@@ -37,6 +65,20 @@ export function createMarkdownReporter(): BenchmarkReporter {
       lines.push(`| Cores | ${suite.environment.cpuCores} |`);
       lines.push(`| Memory | ${formatBytes(suite.environment.totalMemory)} |`);
       lines.push(`| Date | ${new Date(suite.environment.timestamp).toLocaleDateString()} |`);
+
+      // Add git info if available
+      if (suite.environment.gitCommit) {
+        const dirtyIndicator = suite.environment.gitDirty ? ' (dirty)' : '';
+        lines.push(`| Git Commit | ${suite.environment.gitCommit}${dirtyIndicator} |`);
+      }
+
+      // Add dependency versions if available
+      if (suite.environment.dependencies) {
+        for (const [dep, version] of Object.entries(suite.environment.dependencies)) {
+          lines.push(`| ${dep} | ${version} |`);
+        }
+      }
+
       lines.push('');
 
       // Group results by fixture
@@ -65,7 +107,8 @@ export function createMarkdownReporter(): BenchmarkReporter {
           : webpack?.error ?? 'N/A';
 
         const comparison = suite.comparisons.find((c) => c.fixture === fixture);
-        const speedup = comparison ? `**${formatSpeedup(comparison.speedup)}**` : 'N/A';
+        const significanceIndicator = getSignificanceIndicator(comparison);
+        const speedup = comparison ? `**${formatSpeedup(comparison.speedup)}**${significanceIndicator}` : 'N/A';
 
         const size = esbuild?.success ? formatBytes(esbuild.bundleSize) : 'N/A';
 
@@ -99,6 +142,34 @@ export function createMarkdownReporter(): BenchmarkReporter {
       }
       lines.push('');
 
+      // Extended statistics section
+      const hasExtendedStats = suite.results.some((r) => r.success && isExtendedStats(r.time));
+      if (hasExtendedStats) {
+        lines.push('## Extended Statistics');
+        lines.push('');
+        lines.push('95% confidence intervals and effect sizes:');
+        lines.push('');
+        lines.push('| Fixture | Bundler | Mean | 95% CI | CV% | Effect Size |');
+        lines.push('| --- | --- | ---: | --- | ---: | ---: |');
+
+        for (const result of suite.results.filter((r) => r.success)) {
+          if (isExtendedStats(result.time)) {
+            const ci = `[${formatMs(result.time.ci95Lower)}, ${formatMs(result.time.ci95Upper)}]`;
+            const cv = result.time.coefficientOfVariation.toFixed(1);
+
+            // Find effect size from comparison
+            const comparison = suite.comparisons.find((c) => c.fixture === result.fixture);
+            const effectSize =
+              comparison?.effectSize !== undefined ? comparison.effectSize.toFixed(2) : '-';
+
+            lines.push(
+              `| ${result.fixture} | ${result.bundler} | ${formatMs(result.time.mean)} | ${ci} | ${cv}% | ${effectSize} |`,
+            );
+          }
+        }
+        lines.push('');
+      }
+
       // Summary
       const successCount = suite.results.filter((r) => r.success).length;
       const totalCount = suite.results.length;
@@ -114,6 +185,14 @@ export function createMarkdownReporter(): BenchmarkReporter {
         lines.push(`- **Average speedup:** ${formatSpeedup(avgSpeedup)}`);
       }
       lines.push(`- **Total time:** ${formatMs(suite.totalTimeMs)}`);
+      lines.push('');
+
+      // Significance legend
+      lines.push('### Statistical Significance');
+      lines.push('');
+      lines.push('- \\* p < 0.05 (statistically significant)');
+      lines.push('- \\*\\* p < 0.01 (highly significant)');
+      lines.push('- Effect size (Cohen\'s d): small < 0.5, medium 0.5-0.8, large > 0.8');
       lines.push('');
 
       // Footer

@@ -3,7 +3,7 @@
  * Outputs formatted tables to the terminal.
  */
 
-import type { BenchmarkReporter, BenchmarkResult, BenchmarkSuite } from '../types';
+import type { BenchmarkReporter, BenchmarkResult, BenchmarkSuite, BundlerComparison } from '../types';
 import { formatEnvironment } from '../utils/environment';
 import { formatBytes, formatMs, formatSpeedup } from '../utils/stats';
 
@@ -30,6 +30,17 @@ const TABLE = {
 function formatWithStdDev(mean: number, stdDev: number, formatter: (n: number) => string): string {
   return `${formatter(mean)} ± ${formatter(stdDev)}`;
 }
+
+/**
+ * Get significance indicator based on p-value.
+ */
+function getSignificanceIndicator(comparison: BundlerComparison | undefined): string {
+  if (!comparison || comparison.pValue === undefined) return '';
+  if (comparison.pValue < 0.01) return '**';
+  if (comparison.pValue < 0.05) return '*';
+  return '';
+}
+
 
 /**
  * Pad a string to a specific length.
@@ -119,7 +130,8 @@ export function createConsoleReporter(): BenchmarkReporter {
 
         // Find speedup from comparisons
         const comparison = suite.comparisons.find((c) => c.fixture === fixture);
-        const speedup = comparison ? formatSpeedup(comparison.speedup) : 'N/A';
+        const significanceIndicator = getSignificanceIndicator(comparison);
+        const speedup = comparison ? `${formatSpeedup(comparison.speedup)}${significanceIndicator}` : 'N/A';
 
         const size = esbuild?.success ? formatBytes(esbuild.bundleSize) : 'N/A';
 
@@ -187,12 +199,28 @@ export function createConsoleReporter(): BenchmarkReporter {
           ? suite.comparisons.reduce((sum, c) => sum + c.speedup, 0) / suite.comparisons.length
           : 0;
 
+      // Check for low sample sizes
+      const lowSampleResults = suite.results.filter((r) => r.success && r.time.count < 10);
+
       lines.push('Summary:');
       lines.push(`  Benchmarks: ${successCount}/${totalCount} successful`);
       if (avgSpeedup > 0) {
         lines.push(`  Average speedup: ${formatSpeedup(avgSpeedup)}`);
       }
       lines.push(`  Total time: ${formatMs(suite.totalTimeMs)}`);
+
+      // Sample size warnings
+      if (lowSampleResults.length > 0) {
+        lines.push('');
+        lines.push('Warnings:');
+        for (const result of lowSampleResults) {
+          lines.push(`  ${result.fixture}/${result.bundler}: low sample size (n=${result.time.count})`);
+        }
+      }
+
+      // Legend
+      lines.push('');
+      lines.push('Legend: * p<0.05, ** p<0.01 (statistically significant)');
       lines.push('');
 
       return lines.join('\n');

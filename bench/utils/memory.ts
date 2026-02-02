@@ -94,3 +94,131 @@ export function getMemorySnapshot(): MemorySnapshot {
     rss: usage.rss,
   };
 }
+
+/**
+ * Wait for GC to stabilize before measurement.
+ * Runs GC repeatedly until heap usage stabilizes or max attempts reached.
+ */
+export async function waitForGCStabilization(
+  maxAttempts = 5,
+  threshold = 0.05,
+): Promise<{ stabilized: boolean; attempts: number; finalHeap: number }> {
+  forceGC();
+  await Bun.sleep(10);
+
+  let prevHeap = getHeapUsed();
+  let attempts = 1;
+
+  for (let i = 1; i < maxAttempts; i++) {
+    forceGC();
+    await Bun.sleep(10);
+
+    const currentHeap = getHeapUsed();
+    const change = Math.abs(currentHeap - prevHeap) / prevHeap;
+
+    attempts++;
+
+    if (change < threshold) {
+      return { stabilized: true, attempts, finalHeap: currentHeap };
+    }
+
+    prevHeap = currentHeap;
+  }
+
+  return { stabilized: false, attempts, finalHeap: getHeapUsed() };
+}
+
+/**
+ * GC metrics from observation.
+ */
+export interface GCMetrics {
+  /** Total time spent in GC (milliseconds) */
+  totalTimeMs: number;
+  /** Number of GC events */
+  count: number;
+}
+
+/**
+ * CPU usage snapshot.
+ */
+export interface CpuUsage {
+  /** User CPU time in milliseconds */
+  user: number;
+  /** System CPU time in milliseconds */
+  system: number;
+}
+
+/**
+ * Get current CPU usage.
+ */
+export function getCpuUsage(): CpuUsage {
+  const usage = process.cpuUsage();
+  return {
+    user: usage.user / 1000, // Convert microseconds to milliseconds
+    system: usage.system / 1000,
+  };
+}
+
+/**
+ * Calculate CPU usage delta between two snapshots.
+ */
+export function calculateCpuDelta(
+  start: CpuUsage,
+  end: CpuUsage,
+): { user: number; system: number; total: number } {
+  const user = end.user - start.user;
+  const system = end.system - start.system;
+  return {
+    user,
+    system,
+    total: user + system,
+  };
+}
+
+/**
+ * GC observer that tracks garbage collection events.
+ * Note: This relies on PerformanceObserver which may have limited GC visibility in Bun.
+ */
+export function createGCObserver(): { start: () => void; stop: () => GCMetrics } {
+  let totalTimeMs = 0;
+  let count = 0;
+  let observer: PerformanceObserver | null = null;
+
+  return {
+    start() {
+      totalTimeMs = 0;
+      count = 0;
+
+      try {
+        observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.entryType === 'gc') {
+              totalTimeMs += entry.duration;
+              count++;
+            }
+          }
+        });
+
+        // Try to observe GC entries - may not be available in all runtimes
+        try {
+          observer.observe({ entryTypes: ['gc'] });
+        } catch {
+          // GC observation not supported, fall back to estimation
+          observer = null;
+        }
+      } catch {
+        // PerformanceObserver not available
+        observer = null;
+      }
+    },
+
+    stop(): GCMetrics {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+
+      return { totalTimeMs, count };
+    },
+  };
+}

@@ -8,8 +8,8 @@ The Temporal TypeScript SDK uses Webpack to bundle workflow code. This works fin
 
 This package replaces the Webpack bundler with esbuild, providing:
 
-- **6-7x faster builds** — From ~130-150ms down to ~20ms
-- **55-70% less memory** — From 8-10MB down to 2.5-4MB peak heap usage
+- **4-6x faster builds** — Measured with statistical rigor (95% CI, outlier filtering)
+- **30-50% less memory** — Consistent memory savings across all fixture sizes
 - **Watch mode** — Rebuild automatically on file changes with esbuild's incremental builds
 - **Better error messages** — Dependency chain analysis shows exactly how a forbidden module got imported
 - **Static analysis** — Detect non-deterministic patterns before they cause replay failures
@@ -57,21 +57,21 @@ const worker = await Worker.create({
 
 Measured on Apple M1 Max with Bun 1.3.2:
 
-| Fixture              |    esbuild |      Webpack |  Speedup |
-| -------------------- | ---------: | -----------: | -------: |
-| Small (~5 modules)   | 20ms ± 4ms | 140ms ± 16ms | **7.0x** |
-| Medium (~20 modules) | 21ms ± 2ms | 142ms ± 13ms | **6.8x** |
-| Large (~50+ modules) | 21ms ± 1ms |  152ms ± 4ms | **7.4x** |
-| Heavy dependencies   | 19ms ± 2ms |  127ms ± 9ms | **6.9x** |
+| Fixture              |     esbuild |      Webpack |  Speedup |
+| -------------------- | ----------: | -----------: | -------: |
+| Small (~5 modules)   |  35ms ± 6ms | 205ms ± 32ms | **5.9x** |
+| Medium (~20 modules) | 48ms ± 23ms | 252ms ± 30ms | **5.2x** |
+| Large (~50+ modules) | 66ms ± 22ms | 324ms ± 60ms | **4.9x** |
+| Heavy dependencies   | 48ms ± 12ms | 167ms ± 30ms | **3.4x** |
 
 Memory usage comparison (peak heap):
 
 | Fixture    | esbuild | Webpack |  Savings |
 | ---------- | ------: | ------: | -------: |
-| Small      |  3.6 MB |  8.4 MB | 57% less |
-| Medium     |  3.6 MB |  9.1 MB | 60% less |
-| Large      |  3.7 MB |  9.4 MB | 61% less |
-| Heavy deps |  2.5 MB |  8.4 MB | 70% less |
+| Small      |  5.6 MB |  9.9 MB | 43% less |
+| Medium     |  5.4 MB | 10.2 MB | 47% less |
+| Large      |  7.1 MB | 12.1 MB | 41% less |
+| Heavy deps |  5.9 MB |  8.7 MB | 32% less |
 
 Run benchmarks yourself:
 
@@ -79,12 +79,17 @@ Run benchmarks yourself:
 # Quick benchmark (small fixture only)
 bun run benchmark:quick
 
-# Full benchmark suite
+# Full benchmark suite (15 runs, 5 warmup)
 bun run benchmark:full
 
 # Custom options
-bun run benchmark -r 10 -w 3 -o markdown --file BENCHMARK.md
+bun run benchmark -r 15 -w 5 -o markdown --file BENCHMARK.md
+
+# Disable outlier filtering
+bun run benchmark --no-filter-outliers
 ```
+
+The benchmark suite includes statistical analysis with 95% confidence intervals, outlier detection (IQR method), and significance testing (Welch's t-test).
 
 ## Advantages Over Temporal's Bundler
 
