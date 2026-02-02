@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "oven.bun-vscode",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "EditorConfig.EditorConfig"
+  ]
+}

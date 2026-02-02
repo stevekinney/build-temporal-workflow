@@ -1,0 +1,13 @@
+---
+description: Runtime validation for external data
+globs: ["*.ts", "*.tsx"]
+alwaysApply: false
+---
+
+# Type safety
+
+- Treat external data as `unknown` until validated.
+- Use Zod to parse/validate API responses, env vars, and user input.
+- Avoid `as` assertions for untrusted data; prefer `schema.parse` or `schema.safeParse`.
+- Handle validation failures explicitly (return errors or throw).
+- Prefer precise types over `any`; if `any` is unavoidable, document why.

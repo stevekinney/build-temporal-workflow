@@ -1,0 +1,22 @@
+---
+description: Bun runtime, package management, and scripts
+globs: ["package.json", "bunfig.toml", "src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts"]
+alwaysApply: false
+---
+
+# Bun
+
+- Use Bun for all installs and scripts (`bun install`, `bun add`, `bun run <script>`).
+- Keep `bun.lock` as the only lockfile; do not add npm/yarn/pnpm locks.
+- Prefer Bun built-ins (Bun.serve, Bun.file, Bun.env, Bun.fetch) when they fit.
+- Use `bun run` for repo scripts; keep `package.json` scripts as the source of truth.
+
+## Common scripts
+
+- `bun run dev`
+- `bun run build`
+- `bun run lint` / `bun run lint:fix`
+- `bun run typecheck`
+- `bun run test` / `bun run test:coverage`
+- `bun run format` / `bun run format:check`
+- `bun run validate`

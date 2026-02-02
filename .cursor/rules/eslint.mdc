@@ -1,0 +1,14 @@
+---
+description: ESLint conventions for TS/JS files
+globs: ["*.ts", "*.tsx", "*.js", "*.jsx"]
+alwaysApply: false
+---
+
+# ESLint
+
+- Keep files lint clean; prefer fixes over disables.
+- Use `import type` for type-only imports.
+- Use the `node:` prefix for Node built-ins.
+- Remove unused imports/vars; prefix `_` only when required by an API.
+- Keep imports sorted (let ESLint and simple-import-sort enforce it).
+- If you must disable a rule, scope it to one line and add a short reason.

@@ -1,0 +1,14 @@
+---
+description: TypeScript conventions for this repo
+globs: ["*.ts", "*.tsx"]
+alwaysApply: false
+---
+
+# TypeScript
+
+- Keep functions small and single-purpose.
+- Reuse existing utilities before adding new ones.
+- Avoid `any`; prefer `unknown` + narrowing or Zod validation.
+- Prefer union types over enums for simple sets.
+- Use `readonly` for immutable arrays/objects.
+- Keep changes focused; avoid unrelated refactors.
