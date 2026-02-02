@@ -191,6 +191,37 @@ describe('WorkflowCodeBundler', () => {
         expect(bundleError.context.modules).toContain('fs');
       }
     });
+
+    it('error includes dependency chain in context', async () => {
+      try {
+        await bundleWorkflowCode({
+          workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+        });
+        expect.unreachable('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(WorkflowBundleError);
+        const bundleError = error as WorkflowBundleError;
+        // The error should have a dependency chain showing the path to the forbidden module
+        expect(bundleError.context.dependencyChain).toBeDefined();
+        expect(bundleError.context.dependencyChain?.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('error message shows dependency chain', async () => {
+      try {
+        await bundleWorkflowCode({
+          workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+        });
+        expect.unreachable('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(WorkflowBundleError);
+        const bundleError = error as WorkflowBundleError;
+        // The formatted error message should contain "Dependency chain:"
+        expect(bundleError.message).toContain('Dependency chain:');
+        // And should show the arrow format
+        expect(bundleError.message).toContain('→');
+      }
+    });
   });
 
   describe('ignored modules', () => {

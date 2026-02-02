@@ -10,6 +10,7 @@ import { dirname, join, parse } from 'node:path';
 
 import * as esbuild from 'esbuild';
 
+import { findAllDependencyChains, formatDependencyChain } from './dependency-chain';
 import { generateEntrypoint, hashEntrypoint } from './entrypoint';
 import { WorkflowBundleError } from './errors';
 import { createTemporalPlugin } from './esbuild-plugin';
@@ -242,13 +243,38 @@ export class WorkflowCodeBundler {
 
     // Post-build validation: check for forbidden modules
     if (pluginState.foundProblematicModules.size > 0) {
+      const modules = Array.from(pluginState.foundProblematicModules.keys());
+
+      // Find dependency chains using the metafile
+      let dependencyChain: string[] | undefined;
+      if (result.metafile) {
+        const chains = findAllDependencyChains(
+          result.metafile,
+          pluginState.foundProblematicModules,
+        );
+
+        // Use the first chain found for the error message
+        // (typically the most relevant one)
+        for (const [moduleName, chain] of chains) {
+          if (chain && chain.length > 0) {
+            dependencyChain = formatDependencyChain(chain);
+            this.logger.debug('Found dependency chain for forbidden module', {
+              module: moduleName,
+              chain: dependencyChain,
+            });
+            break;
+          }
+        }
+      }
+
       const details = Array.from(pluginState.foundProblematicModules.entries())
         .map(([mod, importer]) => `  - '${mod}' (imported from ${importer})`)
         .join('\n');
 
       throw new WorkflowBundleError('FORBIDDEN_MODULES', {
-        modules: Array.from(pluginState.foundProblematicModules.keys()),
+        modules,
         details,
+        ...(dependencyChain ? { dependencyChain } : {}),
       });
     }
 

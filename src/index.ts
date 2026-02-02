@@ -57,3 +57,11 @@ export {
 
 // Plugin creation (for advanced usage)
 export { createTemporalPlugin } from './esbuild-plugin';
+
+// Dependency chain analysis (for debugging)
+export {
+  findAllDependencyChains,
+  findDependencyChain,
+  formatDependencyChain,
+  summarizeDependencyChain,
+} from './dependency-chain';
