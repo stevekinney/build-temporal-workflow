@@ -4,8 +4,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    "bun": "./dist/index.js",
-    "node": "./dist/index.js"
+    ".": {
+      "bun": "./dist/index.js",
+      "node": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "bundle-temporal-workflow": "./dist/cli.js"
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
