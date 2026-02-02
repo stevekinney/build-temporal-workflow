@@ -367,3 +367,67 @@ export interface UrlImportCache {
    */
   contentType?: string | undefined;
 }
+
+/**
+ * Information about a single workflow in the bundle.
+ */
+export interface WorkflowInfo {
+  /**
+   * The export name of the workflow function.
+   * This is the stable name used to identify the workflow type.
+   */
+  name: string;
+
+  /**
+   * Hash of the workflow function source for change detection.
+   */
+  sourceHash?: string;
+
+  /**
+   * Line number where the workflow is defined (for debugging).
+   */
+  line?: number;
+}
+
+/**
+ * Manifest of workflow bundle contents.
+ *
+ * This manifest provides stable workflow names that survive minification,
+ * and additional metadata useful for debugging and validation.
+ */
+export interface WorkflowManifest {
+  /**
+   * Schema version for future compatibility.
+   */
+  version: 1;
+
+  /**
+   * When the manifest was generated (ISO 8601).
+   */
+  generatedAt: string;
+
+  /**
+   * Hash of the bundle code for integrity checking.
+   */
+  bundleHash: string;
+
+  /**
+   * List of workflows exported by the bundle.
+   */
+  workflows: WorkflowInfo[];
+
+  /**
+   * SDK version used to build the bundle.
+   */
+  sdkVersion?: string;
+
+  /**
+   * Bundler version used.
+   */
+  bundlerVersion?: string;
+
+  /**
+   * Path to the workflow source file.
+   */
+  sourcePath?: string;
+}

@@ -38,6 +38,7 @@ export interface EntrypointOptions {
  * - Loads @temporalio/workflow/lib/worker-interface.js
  * - Calls overrideGlobals() to install deterministic replacements
  * - Exports api, importWorkflows(), and importInterceptors()
+ * - Stabilizes workflow function names to survive minification
  *
  * User code is NOT executed at bundle time - only when Worker calls the import functions.
  */
@@ -51,6 +52,15 @@ export function generateEntrypoint(options: EntrypointOptions): string {
     .map((m) => `require(${JSON.stringify(m)})`)
     .join(',\n    ');
 
+  // The stabilizeWorkflowNames function ensures that workflow function names
+  // are preserved even after minification. It works by:
+  // 1. Iterating over all exports from the workflows module
+  // 2. For each function export, setting fn.name to the export key
+  // 3. This ensures the Temporal SDK can correctly identify workflow types
+  //
+  // This is critical because Temporal uses function.name to determine the
+  // workflow type, and minifiers can mangle these names.
+
   return `// Auto-generated entrypoint for Temporal workflow bundle
 const api = require('@temporalio/workflow/lib/worker-interface.js');
 exports.api = api;
@@ -58,8 +68,30 @@ exports.api = api;
 const { overrideGlobals } = require('@temporalio/workflow/lib/global-overrides.js');
 overrideGlobals();
 
+/**
+ * Stabilize workflow function names to survive minification.
+ * Sets fn.name from the export key for all function exports.
+ */
+function stabilizeWorkflowNames(workflows) {
+  const stabilized = {};
+  for (const [name, value] of Object.entries(workflows)) {
+    if (typeof value === 'function') {
+      // Define the name property to match the export key
+      // This ensures workflow type names survive minification
+      Object.defineProperty(value, 'name', {
+        value: name,
+        writable: false,
+        configurable: true,
+      });
+    }
+    stabilized[name] = value;
+  }
+  return stabilized;
+}
+
 exports.importWorkflows = function importWorkflows() {
-  return require(${JSON.stringify(workflowsPath)});
+  const workflows = require(${JSON.stringify(workflowsPath)});
+  return stabilizeWorkflowNames(workflows);
 };
 
 exports.importInterceptors = function importInterceptors() {

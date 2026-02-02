@@ -13,7 +13,7 @@ import { dirname, resolve } from 'node:path';
 
 import * as esbuild from 'esbuild';
 
-import { bundleWorkflowCode, createConsoleLogger } from './bundler';
+import { bundleWorkflowCode, createConsoleLogger, watchWorkflowCode } from './bundler';
 import {
   findAllDependencyChains,
   formatDependencyChain,
@@ -75,6 +75,7 @@ interface CLIOptions {
   json?: boolean;
   verbose?: boolean;
   help?: boolean;
+  watch?: boolean;
 }
 
 function parseArgs(args: string[]): { command: string; options: CLIOptions } {
@@ -131,6 +132,10 @@ function parseArgs(args: string[]): { command: string; options: CLIOptions } {
       case '--json':
         options.json = true;
         break;
+      case '-w':
+      case '--watch':
+        options.watch = true;
+        break;
       case '-v':
       case '--verbose':
         options.verbose = true;
@@ -170,6 +175,7 @@ ${colors.bold}BUILD OPTIONS${colors.reset}
   -s, --source-map <mode>   Source map mode: inline, external, none (default: inline)
   -m, --mode <mode>         Build mode: development, production (default: development)
   -i, --ignore <module>     Ignore a module (can be repeated)
+  -w, --watch               Watch for changes and rebuild automatically
   --interceptor <path>      Add interceptor module (can be repeated)
   --payload-converter <p>   Path to custom payload converter
   --failure-converter <p>   Path to custom failure converter
@@ -220,6 +226,12 @@ async function buildCommand(options: CLIOptions): Promise<void> {
     logger: options.verbose ? createConsoleLogger() : undefined,
     report: true,
   };
+
+  // Handle watch mode
+  if (options.watch) {
+    await watchCommand(options, bundleOptions);
+    return;
+  }
 
   const startTime = Date.now();
 
@@ -295,6 +307,86 @@ async function buildCommand(options: CLIOptions): Promise<void> {
     }
     process.exit(1);
   }
+}
+
+/**
+ * Handle watch mode - continuously rebuild on file changes.
+ */
+async function watchCommand(
+  cliOptions: CLIOptions,
+  bundleOptions: BundleOptions,
+): Promise<void> {
+  if (!cliOptions.output) {
+    error('Watch mode requires --output flag');
+    process.exit(1);
+  }
+
+  const outputPath = resolve(cliOptions.output);
+  const outputDir = dirname(outputPath);
+
+  if (!existsSync(outputDir)) {
+    mkdirSync(outputDir, { recursive: true });
+  }
+
+  info(`Watching for changes...`);
+  info(`Output: ${outputPath}`);
+  log('');
+
+  let buildCount = 0;
+
+  const handle = await watchWorkflowCode(bundleOptions, (bundle, err) => {
+    buildCount++;
+    const timestamp = new Date().toLocaleTimeString();
+
+    if (err) {
+      log('');
+      error(`[${timestamp}] Build #${buildCount} failed`);
+      if (err instanceof WorkflowBundleError) {
+        log(`${colors.dim}${err.message}${colors.reset}`);
+      } else {
+        log(`${colors.dim}${err.message}${colors.reset}`);
+      }
+      return;
+    }
+
+    if (bundle) {
+      writeFileSync(outputPath, bundle.code);
+
+      if (bundle.sourceMap && cliOptions.sourceMap === 'external') {
+        writeFileSync(`${outputPath}.map`, bundle.sourceMap);
+      }
+
+      success(
+        `[${timestamp}] Build #${buildCount} complete (${formatSize(bundle.code.length)})`,
+      );
+
+      if (bundle.metadata?.warnings?.length) {
+        for (const warning of bundle.metadata.warnings) {
+          warn(`  ${warning}`);
+        }
+      }
+    }
+  });
+
+  // Handle SIGINT (Ctrl+C) gracefully
+  process.on('SIGINT', () => {
+    log('');
+    info('Stopping watcher...');
+    handle
+      .stop()
+      .then(() => {
+        success('Watch mode stopped');
+        process.exit(0);
+      })
+      .catch(() => {
+        process.exit(1);
+      });
+  });
+
+  // Keep the process alive
+  await new Promise(() => {
+    // Never resolves - wait for SIGINT
+  });
 }
 
 interface AnalyzeResult {

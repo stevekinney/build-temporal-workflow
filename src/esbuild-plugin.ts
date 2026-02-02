@@ -7,8 +7,10 @@
  * - Forbidden module detection and blocking
  * - OpenTelemetry module replacement
  * - Ignored modules (with runtime-throwing stubs)
+ * - Import type detection to reduce false positives
  */
 
+import { readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 
 import type * as esbuild from 'esbuild';
@@ -62,6 +64,11 @@ export interface TemporalPluginState {
    * Map of forbidden modules found -> importer path
    */
   foundProblematicModules: Map<string, string>;
+
+  /**
+   * List of files with dynamic imports (break replay determinism)
+   */
+  dynamicImports: Array<{ file: string; line: number; column: number }>;
 }
 
 /**
@@ -81,6 +88,143 @@ function isIgnored(module: string, ignoreModules: string[]): boolean {
 }
 
 /**
+ * Check if an import is type-only.
+ *
+ * Type-only imports are allowed even for forbidden modules because they're
+ * erased at compile time and don't affect runtime behavior.
+ *
+ * Patterns detected:
+ * - import type { Foo } from 'module'
+ * - import { type Foo } from 'module'
+ * - import type * as Mod from 'module'
+ *
+ * This function reads the importer file and checks if the specific import
+ * statement is type-only.
+ */
+function isTypeOnlyImport(
+  modulePath: string,
+  importerPath: string,
+  importerContentsCache: Map<string, string>,
+): boolean {
+  // Skip non-TypeScript files
+  if (!importerPath.match(/\.[mc]?tsx?$/)) {
+    return false;
+  }
+
+  try {
+    let contents = importerContentsCache.get(importerPath);
+    if (!contents) {
+      contents = readFileSync(importerPath, 'utf-8');
+      importerContentsCache.set(importerPath, contents);
+    }
+
+    // Escape the module path for regex
+    const escapedPath = modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Pattern 1: import type { ... } from 'module'
+    // Pattern 2: import type * as Name from 'module'
+    const typeImportPattern = new RegExp(
+      `import\\s+type\\s+(?:\\{[^}]*\\}|\\*\\s+as\\s+\\w+)\\s+from\\s+['"]${escapedPath}['"]`,
+    );
+
+    // Pattern 3: import { type Foo, type Bar } from 'module'
+    // This needs to check if ALL imports are type-only
+    const namedImportPattern = new RegExp(
+      `import\\s+\\{([^}]*)\\}\\s+from\\s+['"]${escapedPath}['"]`,
+      'g',
+    );
+
+    // Check for explicit type import
+    if (typeImportPattern.test(contents)) {
+      return true;
+    }
+
+    // Check named imports - if all are type-prefixed, it's type-only
+    let match;
+    while ((match = namedImportPattern.exec(contents)) !== null) {
+      const imports = match[1]!;
+
+      // Split by comma and check each import
+      const importNames = imports
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      // If empty (import {} from 'x'), skip
+      if (importNames.length === 0) {
+        continue;
+      }
+
+      // Check if all imports are type-prefixed
+      const allTypePrefixed = importNames.every((imp) => {
+        // Handle: type Foo, type Foo as Bar
+        return imp.startsWith('type ') || imp.startsWith('type\t');
+      });
+
+      if (!allTypePrefixed) {
+        // Found a value import
+        return false;
+      }
+    }
+
+    // If we found type imports but no value imports, it's type-only
+    // However, if we found nothing, be conservative and return false
+    if (typeImportPattern.test(contents)) {
+      return true;
+    }
+
+    // Check for any non-type import of this module
+    const valueImportPattern = new RegExp(
+      `import\\s+(?!type\\s)[^'"]*['"]${escapedPath}['"]`,
+    );
+
+    // Also check for require() calls
+    const requirePattern = new RegExp(`require\\s*\\(\\s*['"]${escapedPath}['"]\\s*\\)`);
+
+    if (requirePattern.test(contents)) {
+      return false;
+    }
+
+    if (valueImportPattern.test(contents)) {
+      // Found a value import - check if it's actually type-only with inline type
+      const lines = contents.split('\n');
+      for (const line of lines) {
+        if (line.includes(modulePath) && line.includes('import')) {
+          // Skip lines that are clearly type-only
+          if (line.match(/import\s+type\s/)) {
+            continue;
+          }
+
+          // Check for inline type imports
+          const inlineMatch = line.match(/import\s+\{([^}]*)\}/);
+          if (inlineMatch) {
+            const imports = inlineMatch[1]!
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const hasValueImport = imports.some(
+              (imp) => !imp.startsWith('type ') && !imp.startsWith('type\t'),
+            );
+            if (hasValueImport) {
+              return false;
+            }
+          } else {
+            // Non-destructuring import of a forbidden module
+            return false;
+          }
+        }
+      }
+    }
+
+    // Default to type-only if we only found type imports
+    return typeImportPattern.test(contents);
+  } catch {
+    // If we can't read the file, be conservative
+    return false;
+  }
+}
+
+/**
  * Create the Temporal workflow esbuild plugin.
  * Returns both the plugin and a state object for post-build validation.
  */
@@ -94,7 +238,11 @@ export function createTemporalPlugin(
   // Shared state for post-build validation
   const state: TemporalPluginState = {
     foundProblematicModules: new Map(),
+    dynamicImports: [],
   };
+
+  // Cache for importer file contents (for type-only import detection)
+  const importerContentsCache = new Map<string, string>();
 
   const plugin: esbuild.Plugin = {
     name: 'temporal-workflow',
@@ -125,6 +273,18 @@ export function createTemporalPlugin(
           return {
             path: normalized,
             namespace: 'temporal-ignored',
+          };
+        }
+
+        // Check if this is a type-only import (allowed for forbidden modules)
+        if (
+          args.importer &&
+          isTypeOnlyImport(args.path, args.importer, importerContentsCache)
+        ) {
+          // Type-only imports are erased at compile time, so they're safe
+          return {
+            path: normalized,
+            namespace: 'temporal-type-only',
           };
         }
 
@@ -212,6 +372,18 @@ export function createTemporalPlugin(
 
         // Check against forbidden list
         if (isForbidden(normalized, policy)) {
+          // Check if this is a type-only import (allowed for forbidden modules)
+          if (
+            args.importer &&
+            isTypeOnlyImport(args.path, args.importer, importerContentsCache)
+          ) {
+            // Type-only imports are erased at compile time, so they're safe
+            return {
+              path: normalized,
+              namespace: 'temporal-type-only',
+            };
+          }
+
           // Record for error reporting and return a stub to prevent esbuild errors
           foundProblematicModules.set(normalized, args.importer || 'unknown');
           return {
@@ -234,6 +406,13 @@ export function createTemporalPlugin(
         loader: 'js',
       }));
 
+      // Type-only imports are erased at compile time, so we return an empty module
+      // This is safe because TypeScript only uses these imports for type checking
+      build.onLoad({ filter: /.*/, namespace: 'temporal-type-only' }, () => ({
+        contents: '// Type-only import - erased at compile time',
+        loader: 'js',
+      }));
+
       // Stub for forbidden modules - the bundler will check state.foundProblematicModules
       // after the build and throw a proper error
       build.onLoad({ filter: /.*/, namespace: 'temporal-forbidden' }, (args) => ({
@@ -244,6 +423,58 @@ export function createTemporalPlugin(
         `,
         loader: 'js',
       }));
+
+      // ============================================================
+      // 5. Detect dynamic imports (import() expressions)
+      // Dynamic imports break workflow determinism because the module
+      // resolved at runtime may differ between original and replay.
+      // ============================================================
+      build.onLoad({ filter: /\.[mc]?[jt]sx?$/ }, (args) => {
+        // Read file contents (may already be cached)
+        let contents = importerContentsCache.get(args.path);
+        if (!contents) {
+          contents = readFileSync(args.path, 'utf-8');
+          importerContentsCache.set(args.path, contents);
+        }
+
+        // Check for dynamic import() expressions
+        // Pattern matches: import(...) but not import type or import from
+        const dynamicImportPattern = /\bimport\s*\(\s*[^)]+\s*\)/g;
+
+        let match;
+        while ((match = dynamicImportPattern.exec(contents)) !== null) {
+          // Skip if this is inside a comment
+          const beforeMatch = contents.slice(0, match.index);
+          const lastNewline = beforeMatch.lastIndexOf('\n');
+          const linePrefix = beforeMatch.slice(lastNewline + 1);
+
+          // Skip single-line comments
+          if (linePrefix.includes('//')) {
+            continue;
+          }
+
+          // Skip multi-line comments (simplified)
+          const lastBlockOpen = beforeMatch.lastIndexOf('/*');
+          const lastBlockClose = beforeMatch.lastIndexOf('*/');
+          if (lastBlockOpen > lastBlockClose) {
+            continue;
+          }
+
+          // Calculate line and column
+          const lines = beforeMatch.split('\n');
+          const line = lines.length;
+          const column = (lines[lines.length - 1]?.length ?? 0) + 1;
+
+          state.dynamicImports.push({
+            file: args.path,
+            line,
+            column,
+          });
+        }
+
+        // Return undefined to continue with default loading
+        return undefined;
+      });
 
       // Note: We don't throw in onEnd because esbuild wraps the error and loses type info.
       // Instead, the bundler checks state.foundProblematicModules after the build.

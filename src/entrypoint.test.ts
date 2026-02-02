@@ -154,4 +154,53 @@ describe('entrypoint', () => {
       expect(hash).toHaveLength(16);
     });
   });
+
+  describe('workflow name stabilization', () => {
+    it('includes stabilizeWorkflowNames function', () => {
+      const code = generateEntrypoint({
+        workflowsPath: '/path/to/workflows.ts',
+        workflowInterceptorModules: [],
+      });
+
+      expect(code).toContain('stabilizeWorkflowNames');
+    });
+
+    it('uses Object.defineProperty to set function names', () => {
+      const code = generateEntrypoint({
+        workflowsPath: '/path/to/workflows.ts',
+        workflowInterceptorModules: [],
+      });
+
+      expect(code).toContain("Object.defineProperty(value, 'name'");
+    });
+
+    it('applies stabilization in importWorkflows', () => {
+      const code = generateEntrypoint({
+        workflowsPath: '/path/to/workflows.ts',
+        workflowInterceptorModules: [],
+      });
+
+      expect(code).toContain('return stabilizeWorkflowNames(workflows)');
+    });
+
+    it('stabilization preserves non-function exports', () => {
+      const code = generateEntrypoint({
+        workflowsPath: '/path/to/workflows.ts',
+        workflowInterceptorModules: [],
+      });
+
+      // The function should copy all exports, not just functions
+      expect(code).toContain('stabilized[name] = value');
+    });
+
+    it('only modifies function.name property', () => {
+      const code = generateEntrypoint({
+        workflowsPath: '/path/to/workflows.ts',
+        workflowInterceptorModules: [],
+      });
+
+      // Should check typeof === 'function' before modifying
+      expect(code).toContain("typeof value === 'function'");
+    });
+  });
 });

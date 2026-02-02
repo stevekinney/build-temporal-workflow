@@ -23,7 +23,27 @@
  */
 
 // Main API
-export { bundleWorkflowCode, createConsoleLogger, WorkflowCodeBundler } from './bundler';
+export type { WatchCallback, WatchHandle } from './bundler';
+export {
+  bundleWorkflowCode,
+  createConsoleLogger,
+  watchWorkflowCode,
+  WorkflowCodeBundler,
+} from './bundler';
+
+// Bundle loading and caching
+export type {
+  GetCachedBundleOptions,
+  LoadBundleOptions,
+  LoadBundleResult,
+} from './loader';
+export {
+  clearBundleCache,
+  getBundleCacheStats,
+  getCachedBundle,
+  loadBundle,
+  preloadBundles,
+} from './loader';
 
 // Errors
 export { WorkflowBundleError } from './errors';
@@ -43,10 +63,40 @@ export type {
   WorkflowBundle,
   WorkflowBundleErrorCode,
   WorkflowBundleErrorContext,
+  WorkflowInfo,
+  WorkflowManifest,
 } from './types';
 
 // Validation
-export { validateBundle, validateBundleStructure } from './validate';
+export type { EnhancedValidationResult, ValidateBundleOptions } from './validate';
+export {
+  validateBundle,
+  validateBundleDetailed,
+  validateBundleStructure,
+} from './validate';
+
+// Manifest generation
+export type { GenerateManifestOptions, ManifestDiff } from './manifest';
+export {
+  compareManifests,
+  generateManifest,
+  parseManifest,
+  serializeManifest,
+} from './manifest';
+
+// Replay safety analysis
+export type {
+  AnalyzeReplaySafetyOptions,
+  ReplaySafetyResult,
+  ReplayUnsafePattern,
+  ReplayViolation,
+} from './replay-safety';
+export {
+  analyzeFileReplaySafety,
+  analyzeReplaySafety,
+  formatReplayViolations,
+  REPLAY_UNSAFE_PATTERNS,
+} from './replay-safety';
 
 // Policy (for advanced usage)
 export {
