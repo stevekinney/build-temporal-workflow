@@ -41,7 +41,10 @@ export function getDefaultForbiddenModules(): string[] {
  *
  * Falls back to bundled defaults if the SDK exports are not available.
  */
+let cachedPolicy: DeterminismPolicy | undefined;
+
 export function loadDeterminismPolicy(): DeterminismPolicy {
+  if (cachedPolicy) return cachedPolicy;
   try {
     // Try to import policy from installed @temporalio/worker
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -57,19 +60,21 @@ export function loadDeterminismPolicy(): DeterminismPolicy {
       disallowedModules.every((m): m is string => typeof m === 'string') &&
       allowedBuiltinModules.every((m): m is string => typeof m === 'string')
     ) {
-      return {
+      cachedPolicy = {
         allowed: allowedBuiltinModules,
         forbidden: disallowedModules,
       };
+      return cachedPolicy;
     }
   } catch {
     // SDK doesn't export these, use defaults
   }
 
-  return {
+  cachedPolicy = {
     allowed: [...ALLOWED_BUILTINS],
     forbidden: getDefaultForbiddenModules(),
   };
+  return cachedPolicy;
 }
 
 /**
@@ -83,9 +88,26 @@ export function normalizeSpecifier(spec: string): string {
  * Check if a module matches any in the given list.
  * Matches exact names and subpath imports (e.g., 'fs' matches 'fs/promises').
  */
+/**
+ * WeakMap-based cache for Set lookups, keyed by the modules array reference.
+ */
+const moduleSetCache = new WeakMap<string[], Set<string>>();
+
+function getModuleSet(modules: string[]): Set<string> {
+  let set = moduleSetCache.get(modules);
+  if (!set) {
+    set = new Set(modules);
+    moduleSetCache.set(modules, set);
+  }
+  return set;
+}
+
 export function moduleMatches(userModule: string, modules: string[]): boolean {
   const normalized = normalizeSpecifier(userModule);
-  return modules.some((m) => normalized === m || normalized.startsWith(`${m}/`));
+  const exactSet = getModuleSet(modules);
+  if (exactSet.has(normalized)) return true;
+  // Check subpath imports (e.g., 'fs/promises' matches 'fs')
+  return modules.some((m) => normalized.startsWith(`${m}/`));
 }
 
 /**

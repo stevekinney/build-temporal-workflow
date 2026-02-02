@@ -113,5 +113,8 @@ export function hashEntrypoint(options: EntrypointOptions): string {
     failureConverterPath: options.failureConverterPath,
   });
 
+  if (typeof globalThis.Bun?.hash === 'function') {
+    return Bun.hash(content).toString(16).slice(0, 16);
+  }
   return createHash('sha256').update(content).digest('hex').slice(0, 16);
 }

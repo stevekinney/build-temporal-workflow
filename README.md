@@ -57,23 +57,25 @@ const worker = await Worker.create({
 
 Measured on Apple M1 Max, Node v24.3.0, Bun 1.3.2:
 
+The `@temporalio/worker` column represents the built-in `bundleWorkflowCode` from the Temporal TypeScript SDK, which uses Webpack internally. This library is a drop-in replacement that's significantly faster.
+
 Build time comparison:
 
-| Fixture              | esbuild (Node) | Webpack (Node) | esbuild (Bun) | Bun.build (Bun) |
-| -------------------- | -------------: | -------------: | ------------: | --------------: |
-| Small (~5 modules)   |     19ms ± 3ms |    226ms ± 5ms |    22ms ± 4ms |       9ms ± 1ms |
-| Medium (~20 modules) |     21ms ± 1ms |    232ms ± 6ms |    19ms ± 3ms |      10ms ± 1ms |
-| Large (~50+ modules) |     23ms ± 3ms |   263ms ± 10ms |    23ms ± 3ms |      15ms ± 8ms |
-| Heavy dependencies   |     22ms ± 3ms |   224ms ± 10ms |    22ms ± 6ms |       9ms ± 1ms |
+| Fixture              | esbuild (Node) | @temporalio/worker | esbuild (Bun) | Bun.build (Bun) |
+| -------------------- | -------------: | -----------------: | ------------: | --------------: |
+| Small (~5 modules)   |     19ms ± 3ms |        226ms ± 5ms |    22ms ± 4ms |       9ms ± 1ms |
+| Medium (~20 modules) |     21ms ± 1ms |        232ms ± 6ms |    19ms ± 3ms |      10ms ± 1ms |
+| Large (~50+ modules) |     23ms ± 3ms |       263ms ± 10ms |    23ms ± 3ms |      15ms ± 8ms |
+| Heavy dependencies   |     22ms ± 3ms |       224ms ± 10ms |    22ms ± 6ms |       9ms ± 1ms |
 
 Memory usage comparison (peak heap):
 
-| Fixture              | esbuild (Node) | Webpack (Node) | esbuild (Bun) | Bun.build (Bun) |
-| -------------------- | -------------: | -------------: | ------------: | --------------: |
-| Small (~5 modules)   |        3.89 MB |       52.25 MB |       2.30 MB |         0.05 MB |
-| Medium (~20 modules) |        3.96 MB |       50.80 MB |       3.01 MB |         0.05 MB |
-| Large (~50+ modules) |        4.46 MB |       53.90 MB |       3.24 MB |         0.09 MB |
-| Heavy dependencies   |        3.67 MB |       52.11 MB |       5.58 MB |         0.04 MB |
+| Fixture              | esbuild (Node) | @temporalio/worker | esbuild (Bun) | Bun.build (Bun) |
+| -------------------- | -------------: | -----------------: | ------------: | --------------: |
+| Small (~5 modules)   |        3.89 MB |           52.25 MB |       2.30 MB |         0.05 MB |
+| Medium (~20 modules) |        3.96 MB |           50.80 MB |       3.01 MB |         0.05 MB |
+| Large (~50+ modules) |        4.46 MB |           53.90 MB |       3.24 MB |         0.09 MB |
+| Heavy dependencies   |        3.67 MB |           52.11 MB |       5.58 MB |         0.04 MB |
 
 To use the Bun bundler backend:
 
@@ -105,7 +107,9 @@ bun run benchmark:bun
 
 The benchmark suite includes statistical analysis with 95% confidence intervals, outlier detection (IQR method), and significance testing (Welch's t-test).
 
-## Advantages Over Temporal's Bundler
+## Advantages Over `@temporalio/worker`'s Built-in Bundler
+
+The Temporal TypeScript SDK ships a Webpack-based `bundleWorkflowCode` in `@temporalio/worker`. This library replaces it with esbuild for dramatically faster builds while maintaining full compatibility.
 
 ### 1. Faster Builds
 

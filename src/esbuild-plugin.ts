@@ -113,6 +113,27 @@ function isIgnored(module: string, ignoreModules: string[]): boolean {
  * This function reads the importer file and checks if the specific import
  * statement is type-only.
  */
+/**
+ * Cache for compiled regex patterns keyed by escaped module path.
+ */
+const typeImportPatternCache = new Map<string, RegExp>();
+const namedImportPatternCache = new Map<string, RegExp>();
+const valueImportPatternCache = new Map<string, RegExp>();
+const requirePatternCache = new Map<string, RegExp>();
+
+function getOrCreatePattern(
+  cache: Map<string, RegExp>,
+  key: string,
+  factory: () => RegExp,
+): RegExp {
+  let pattern = cache.get(key);
+  if (!pattern) {
+    pattern = factory();
+    cache.set(key, pattern);
+  }
+  return pattern;
+}
+
 function isTypeOnlyImport(
   modulePath: string,
   importerPath: string,
@@ -135,16 +156,24 @@ function isTypeOnlyImport(
 
     // Pattern 1: import type { ... } from 'module'
     // Pattern 2: import type * as Name from 'module'
-    const typeImportPattern = new RegExp(
-      `import\\s+type\\s+(?:\\{[^}]*\\}|\\*\\s+as\\s+\\w+)\\s+from\\s+['"]${escapedPath}['"]`,
+    const typeImportPattern = getOrCreatePattern(
+      typeImportPatternCache,
+      escapedPath,
+      () =>
+        new RegExp(
+          `import\\s+type\\s+(?:\\{[^}]*\\}|\\*\\s+as\\s+\\w+)\\s+from\\s+['"]${escapedPath}['"]`,
+        ),
     );
 
     // Pattern 3: import { type Foo, type Bar } from 'module'
     // This needs to check if ALL imports are type-only
-    const namedImportPattern = new RegExp(
-      `import\\s+\\{([^}]*)\\}\\s+from\\s+['"]${escapedPath}['"]`,
-      'g',
+    const namedImportPattern = getOrCreatePattern(
+      namedImportPatternCache,
+      escapedPath,
+      () => new RegExp(`import\\s+\\{([^}]*)\\}\\s+from\\s+['"]${escapedPath}['"]`, 'g'),
     );
+    // Reset lastIndex for global regex reuse
+    namedImportPattern.lastIndex = 0;
 
     // Check for explicit type import
     if (typeImportPattern.test(contents)) {
@@ -186,12 +215,18 @@ function isTypeOnlyImport(
     }
 
     // Check for any non-type import of this module
-    const valueImportPattern = new RegExp(
-      `import\\s+(?!type\\s)[^'"]*['"]${escapedPath}['"]`,
+    const valueImportPattern = getOrCreatePattern(
+      valueImportPatternCache,
+      escapedPath,
+      () => new RegExp(`import\\s+(?!type\\s)[^'"]*['"]${escapedPath}['"]`),
     );
 
     // Also check for require() calls
-    const requirePattern = new RegExp(`require\\s*\\(\\s*['"]${escapedPath}['"]\\s*\\)`);
+    const requirePattern = getOrCreatePattern(
+      requirePatternCache,
+      escapedPath,
+      () => new RegExp(`require\\s*\\(\\s*['"]${escapedPath}['"]\\s*\\)`),
+    );
 
     if (requirePattern.test(contents)) {
       return false;
@@ -233,6 +268,28 @@ function isTypeOnlyImport(
   } catch {
     // If we can't read the file, be conservative
     return false;
+  }
+}
+
+/**
+ * Infer the esbuild loader from a file extension.
+ */
+function inferLoader(filePath: string): esbuild.Loader {
+  const ext = filePath.slice(filePath.lastIndexOf('.'));
+  switch (ext) {
+    case '.ts':
+    case '.mts':
+    case '.cts':
+      return 'ts';
+    case '.tsx':
+      return 'tsx';
+    case '.jsx':
+      return 'jsx';
+    case '.mjs':
+    case '.cjs':
+    case '.js':
+    default:
+      return 'js';
   }
 }
 
@@ -504,8 +561,9 @@ export function createTemporalPlugin(
           });
         }
 
-        // Return undefined to continue with default loading
-        return undefined;
+        // Return the cached contents to avoid esbuild re-reading the file
+        const loader = inferLoader(args.path);
+        return { contents, loader };
       });
 
       // ============================================================
