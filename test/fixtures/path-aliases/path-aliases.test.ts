@@ -35,6 +35,32 @@ describe('path-aliases bundling', () => {
     expect(bundle.code).toContain('__TEMPORAL__');
   });
 
+  it('resolves transitive path alias imports (esbuild)', async () => {
+    const bundle = await bundleWorkflowCode({
+      workflowsPath: resolve(fixturesDir, 'workflows.ts'),
+      tsconfigPath: resolve(fixturesDir, 'tsconfig.json'),
+      bundler: 'esbuild',
+    });
+
+    // formatName is imported transitively: workflows.ts -> greet.ts -> format.ts
+    expect(bundle.code).toContain('formatName');
+    expect(bundle.code).toContain('toUpperCase');
+    expect(bundle.code).toContain('formatWorkflow');
+  });
+
+  it('resolves transitive path alias imports (bun)', async () => {
+    const bundle = await bundleWorkflowCode({
+      workflowsPath: resolve(fixturesDir, 'workflows.ts'),
+      tsconfigPath: resolve(fixturesDir, 'tsconfig.json'),
+      bundler: 'bun',
+    });
+
+    // formatName is imported transitively: workflows.ts -> greet.ts -> format.ts
+    expect(bundle.code).toContain('formatName');
+    expect(bundle.code).toContain('toUpperCase');
+    expect(bundle.code).toContain('formatWorkflow');
+  });
+
   it('bundles with tsconfigPath: true (auto-detect)', async () => {
     const bundle = await bundleWorkflowCode({
       workflowsPath: resolve(fixturesDir, 'workflows.ts'),

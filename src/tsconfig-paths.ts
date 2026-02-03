@@ -314,7 +314,7 @@ export function createTsconfigPathsPlugin(
           if (existsSync(path)) {
             const stat = statSync(path);
             if (stat.isFile()) {
-              return { path };
+              return { path, namespace: 'file' };
             }
             // If it's a directory, try index files
             if (stat.isDirectory()) {
@@ -326,7 +326,7 @@ export function createTsconfigPathsPlugin(
               ]) {
                 const indexPath = join(path, indexFile);
                 if (existsSync(indexPath)) {
-                  return { path: indexPath };
+                  return { path: indexPath, namespace: 'file' };
                 }
               }
             }
@@ -336,7 +336,7 @@ export function createTsconfigPathsPlugin(
           for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
             const pathWithExt = path + ext;
             if (existsSync(pathWithExt)) {
-              return { path: pathWithExt };
+              return { path: pathWithExt, namespace: 'file' };
             }
           }
         }
