@@ -1,21 +1,27 @@
 {
   "name": "build-temporal-workflow",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "exports": {
     ".": {
-      "bun": "./dist/index.js",
-      "node": "./dist/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./vite": {
       "types": "./dist/vite-plugin.d.ts",
-      "import": "./dist/vite-plugin.js"
+      "import": "./dist/vite-plugin.js",
+      "default": "./dist/vite-plugin.js"
     }
   },
+  "types": "./dist/index.d.ts",
   "bin": {
-    "bundle-temporal-workflow": "./dist/cli.js"
+    "bundle-temporal-workflow": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "benchmark": "node --expose-gc --import tsx/esm bench/cli.ts",
     "benchmark:bun": "bun bench/cli.ts -b esbuild,bun",
