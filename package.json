@@ -1,6 +1,6 @@
 {
   "name": "build-temporal-workflow",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/stevekinney/build-temporal-workflow"
