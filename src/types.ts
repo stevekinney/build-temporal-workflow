@@ -139,6 +139,20 @@ export interface BundleOptions {
    * Takes precedence over import map in deno.json.
    */
   importMapPath?: string | undefined;
+
+  /**
+   * Path to tsconfig.json for resolving TypeScript path aliases.
+   *
+   * When set to `true`, automatically searches for tsconfig.json
+   * near the workflowsPath. When set to a string, uses that specific
+   * tsconfig.json file.
+   *
+   * Path aliases like `@/*` mapping to `./src/*` will be resolved
+   * during bundling.
+   *
+   * Default: undefined (no automatic tsconfig paths resolution)
+   */
+  tsconfigPath?: string | boolean | undefined;
 }
 
 /**

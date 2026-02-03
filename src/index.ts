@@ -135,3 +135,12 @@ export {
   parseNpmSpecifier,
   resolveCrossRuntimeConfig,
 } from './cross-runtime';
+
+// TypeScript path alias support
+export type { TsconfigPaths, TsconfigPathsPluginOptions } from './tsconfig-paths';
+export {
+  createTsconfigPathsPlugin,
+  findTsconfig,
+  parseTsconfigPaths,
+  resolvePathAlias,
+} from './tsconfig-paths';

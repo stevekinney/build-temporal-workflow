@@ -251,6 +251,46 @@ Supports:
 - Import maps
 - Bun's `bun:` builtins
 
+### TypeScript Path Aliases
+
+Use TypeScript path aliases like `@/utils` in your workflow code:
+
+```typescript
+// tsconfig.json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@utils/*": ["./src/utils/*"]
+    }
+  }
+}
+```
+
+```typescript
+// In your workflow code
+import { helper } from '@/utils/helper';
+import { format } from '@utils/format';
+```
+
+Enable path alias resolution by setting `tsconfigPath`:
+
+```typescript
+const bundle = await bundleWorkflowCode({
+  workflowsPath: './src/workflows.ts',
+  tsconfigPath: true, // Auto-detect tsconfig.json
+});
+
+// Or specify a path explicitly
+const bundle = await bundleWorkflowCode({
+  workflowsPath: './src/workflows.ts',
+  tsconfigPath: './tsconfig.json',
+});
+```
+
+This works with both the esbuild and Bun.build backends.
+
 ### Static File Imports
 
 Import Markdown, TOML, YAML, and text files directly in your workflow code using opt-in plugins. Files are read and embedded at build time:
@@ -1035,6 +1075,7 @@ bundle-temporal-workflow doctor
 | `inputFlavor`                | `'node' \| 'deno' \| 'bun' \| 'auto'` | `'auto'`        | Input flavor                        |
 | `denoConfigPath`             | `string`                              | -               | Path to deno.json                   |
 | `importMapPath`              | `string`                              | -               | Path to import map                  |
+| `tsconfigPath`               | `string \| boolean`                   | -               | Path to tsconfig.json for aliases   |
 | `bundler`                    | `'esbuild' \| 'bun' \| 'auto'`        | `'auto'`        | Bundler backend to use              |
 | `buildOptions`               | `esbuild.BuildOptions`                | -               | Additional esbuild options          |
 | `plugins`                    | `BundlerPlugin[]`                     | `[]`            | Bundler plugins                     |

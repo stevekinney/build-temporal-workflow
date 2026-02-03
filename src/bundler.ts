@@ -18,6 +18,7 @@ import { WorkflowBundleError } from './errors';
 import { createTemporalPlugin } from './esbuild-plugin';
 import { loadDeterminismPolicy } from './policy';
 import { shimEsbuildOutput } from './shim';
+import { createTsconfigPathsPlugin, findTsconfig } from './tsconfig-paths';
 import type {
   BundleContext,
   BundleMetadata,
@@ -96,6 +97,22 @@ const ENFORCED_OPTIONS: Partial<esbuild.BuildOptions> = {
 };
 
 /**
+ * Resolve the tsconfig path from options.
+ */
+function resolveTsconfigPath(
+  option: string | boolean | undefined,
+  workflowsPath: string,
+): string | undefined {
+  if (option === true) {
+    return findTsconfig(workflowsPath);
+  }
+  if (typeof option === 'string') {
+    return option;
+  }
+  return undefined;
+}
+
+/**
  * Validate user-provided esbuild options don't break invariants.
  */
 function validateUserOptions(opts: Partial<esbuild.BuildOptions> | undefined): void {
@@ -145,6 +162,7 @@ export class WorkflowCodeBundler {
   readonly inputFlavor: InputFlavor | undefined;
   readonly denoConfigPath: string | undefined;
   readonly importMapPath: string | undefined;
+  readonly tsconfigPath: string | undefined;
   readonly bundler: 'esbuild' | 'bun';
 
   constructor(options: BundleOptions) {
@@ -171,6 +189,10 @@ export class WorkflowCodeBundler {
     this.inputFlavor = resolvedOptions.inputFlavor;
     this.denoConfigPath = resolvedOptions.denoConfigPath;
     this.importMapPath = resolvedOptions.importMapPath;
+    this.tsconfigPath = resolveTsconfigPath(
+      resolvedOptions.tsconfigPath,
+      resolvedOptions.workflowsPath,
+    );
     this.bundler = resolveBundlerBackend(resolvedOptions.bundler, this.logger);
 
     // Validate user options (only relevant for esbuild backend)
@@ -197,6 +219,7 @@ export class WorkflowCodeBundler {
         inputFlavor: this.inputFlavor,
         denoConfigPath: this.denoConfigPath,
         importMapPath: this.importMapPath,
+        tsconfigPath: this.tsconfigPath,
         logger: this.logger,
         ...(this.buildOptions && { buildOptions: this.buildOptions }),
       });
@@ -282,9 +305,13 @@ export class WorkflowCodeBundler {
         outfile: 'workflow-bundle.js',
         metafile: true,
 
-        // Plugins: cross-runtime first (for import map resolution), then temporal
+        // Plugins: cross-runtime first (for import map resolution),
+        // then tsconfig paths, then temporal
         plugins: [
           crossRuntimePlugin,
+          ...(this.tsconfigPath
+            ? [createTsconfigPathsPlugin({ tsconfigPath: this.tsconfigPath })]
+            : []),
           temporalPlugin,
           ...(this.buildOptions?.plugins ?? []),
         ],
@@ -490,9 +517,13 @@ export class WorkflowCodeBundler {
       outfile: 'workflow-bundle.js',
       metafile: false,
 
-      // Plugins: cross-runtime first (for import map resolution), then temporal
+      // Plugins: cross-runtime first (for import map resolution),
+      // then tsconfig paths, then temporal
       plugins: [
         crossRuntimePlugin,
+        ...(this.tsconfigPath
+          ? [createTsconfigPathsPlugin({ tsconfigPath: this.tsconfigPath })]
+          : []),
         temporalPlugin,
         ...(this.buildOptions?.plugins ?? []),
       ],

@@ -17,6 +17,7 @@ import { WorkflowBundleError } from './errors';
 import { createTemporalPlugin } from './esbuild-plugin';
 import { loadDeterminismPolicy } from './policy';
 import { shimEsbuildOutput, validateShimmedOutput } from './shim';
+import { createTsconfigPathsPlugin } from './tsconfig-paths';
 import type { BundleMetadata, InputFlavor, Logger, WorkflowBundle } from './types';
 import { getBundlerVersion, getTemporalSdkVersion } from './validate';
 
@@ -66,6 +67,7 @@ export async function bunBuildBundle(options: {
   inputFlavor: InputFlavor | undefined;
   denoConfigPath: string | undefined;
   importMapPath: string | undefined;
+  tsconfigPath: string | undefined;
   logger: Logger;
   buildOptions?: Partial<esbuild.BuildOptions>;
 }): Promise<WorkflowBundle> {
@@ -148,6 +150,13 @@ export async function bunBuildBundle(options: {
       // Cast is needed because Bun's PluginBuilder type is a subset of esbuild's PluginBuild
       plugins: [
         crossRuntimePlugin as unknown as import('bun').BunPlugin,
+        ...(options.tsconfigPath
+          ? [
+              createTsconfigPathsPlugin({
+                tsconfigPath: options.tsconfigPath,
+              }) as unknown as import('bun').BunPlugin,
+            ]
+          : []),
         temporalPlugin as unknown as import('bun').BunPlugin,
         ...(options.buildOptions?.plugins ?? []).map(
           (p) => p as unknown as import('bun').BunPlugin,
