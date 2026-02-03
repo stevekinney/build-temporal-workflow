@@ -13,7 +13,10 @@ interface ReturnsActivities {
   createReturnLabel(orderId: string): Promise<string>;
   sendReturnLabel(orderId: string, labelUrl: string): Promise<void>;
   receiveReturn(orderId: string): Promise<boolean>;
-  inspectItems(orderId: string, items: OrderItem[]): Promise<{ passed: boolean; notes?: string }>;
+  inspectItems(
+    orderId: string,
+    items: OrderItem[],
+  ): Promise<{ passed: boolean; notes?: string }>;
   restockItems(items: OrderItem[]): Promise<void>;
   processRefund(orderId: string, amount: number): Promise<PaymentStatus>;
   sendRefundNotification(orderId: string, amount: number): Promise<void>;

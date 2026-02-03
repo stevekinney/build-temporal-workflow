@@ -15,7 +15,11 @@ import { formatBytes, formatMs, formatSpeedup } from '../utils/stats';
 /**
  * Format a value with ± standard deviation for markdown.
  */
-function formatWithStdDev(mean: number, stdDev: number, formatter: (n: number) => string): string {
+function formatWithStdDev(
+  mean: number,
+  stdDev: number,
+  formatter: (n: number) => string,
+): string {
   return `${formatter(mean)} ± ${formatter(stdDev)}`;
 }
 
@@ -58,13 +62,17 @@ export function createMarkdownReporter(): BenchmarkReporter {
       lines.push('');
       lines.push('| Property | Value |');
       lines.push('| --- | --- |');
-      lines.push(`| Platform | ${suite.environment.platform} (${suite.environment.arch}) |`);
+      lines.push(
+        `| Platform | ${suite.environment.platform} (${suite.environment.arch}) |`,
+      );
       lines.push(`| Bun | ${suite.environment.bunVersion} |`);
       lines.push(`| Node | ${suite.environment.nodeVersion} |`);
       lines.push(`| CPU | ${suite.environment.cpuModel} |`);
       lines.push(`| Cores | ${suite.environment.cpuCores} |`);
       lines.push(`| Memory | ${formatBytes(suite.environment.totalMemory)} |`);
-      lines.push(`| Date | ${new Date(suite.environment.timestamp).toLocaleDateString()} |`);
+      lines.push(
+        `| Date | ${new Date(suite.environment.timestamp).toLocaleDateString()} |`,
+      );
 
       // Add git info if available
       if (suite.environment.gitCommit) {
@@ -101,18 +109,22 @@ export function createMarkdownReporter(): BenchmarkReporter {
 
         const esbuildTime = esbuild?.success
           ? formatWithStdDev(esbuild.time.mean, esbuild.time.stdDev, formatMs)
-          : esbuild?.error ?? 'N/A';
+          : (esbuild?.error ?? 'N/A');
         const webpackTime = webpack?.success
           ? formatWithStdDev(webpack.time.mean, webpack.time.stdDev, formatMs)
-          : webpack?.error ?? 'N/A';
+          : (webpack?.error ?? 'N/A');
 
         const comparison = suite.comparisons.find((c) => c.fixture === fixture);
         const significanceIndicator = getSignificanceIndicator(comparison);
-        const speedup = comparison ? `**${formatSpeedup(comparison.speedup)}**${significanceIndicator}` : 'N/A';
+        const speedup = comparison
+          ? `**${formatSpeedup(comparison.speedup)}**${significanceIndicator}`
+          : 'N/A';
 
         const size = esbuild?.success ? formatBytes(esbuild.bundleSize) : 'N/A';
 
-        lines.push(`| ${fixture} | ${esbuildTime} | ${webpackTime} | ${speedup} | ${size} |`);
+        lines.push(
+          `| ${fixture} | ${esbuildTime} | ${webpackTime} | ${speedup} | ${size} |`,
+        );
       }
       lines.push('');
 
@@ -134,8 +146,15 @@ export function createMarkdownReporter(): BenchmarkReporter {
         const comparison = suite.comparisons.find((c) => c.fixture === fixture);
         let savings = 'N/A';
         if (comparison && comparison.memoryDiff !== 0) {
-          const percent = ((comparison.memoryDiff / (comparison.memoryDiff > 0 ? webpack!.memory.mean : esbuild!.memory.mean)) * 100).toFixed(0);
-          savings = comparison.memoryDiff > 0 ? `${percent}% less` : `${Math.abs(Number(percent))}% more`;
+          const percent = (
+            (comparison.memoryDiff /
+              (comparison.memoryDiff > 0 ? webpack!.memory.mean : esbuild!.memory.mean)) *
+            100
+          ).toFixed(0);
+          savings =
+            comparison.memoryDiff > 0
+              ? `${percent}% less`
+              : `${Math.abs(Number(percent))}% more`;
         }
 
         lines.push(`| ${fixture} | ${esbuildMem} | ${webpackMem} | ${savings} |`);
@@ -143,7 +162,9 @@ export function createMarkdownReporter(): BenchmarkReporter {
       lines.push('');
 
       // Extended statistics section
-      const hasExtendedStats = suite.results.some((r) => r.success && isExtendedStats(r.time));
+      const hasExtendedStats = suite.results.some(
+        (r) => r.success && isExtendedStats(r.time),
+      );
       if (hasExtendedStats) {
         lines.push('## Extended Statistics');
         lines.push('');
@@ -158,9 +179,13 @@ export function createMarkdownReporter(): BenchmarkReporter {
             const cv = result.time.coefficientOfVariation.toFixed(1);
 
             // Find effect size from comparison
-            const comparison = suite.comparisons.find((c) => c.fixture === result.fixture);
+            const comparison = suite.comparisons.find(
+              (c) => c.fixture === result.fixture,
+            );
             const effectSize =
-              comparison?.effectSize !== undefined ? comparison.effectSize.toFixed(2) : '-';
+              comparison?.effectSize !== undefined
+                ? comparison.effectSize.toFixed(2)
+                : '-';
 
             lines.push(
               `| ${result.fixture} | ${result.bundler} | ${formatMs(result.time.mean)} | ${ci} | ${cv}% | ${effectSize} |`,
@@ -175,7 +200,8 @@ export function createMarkdownReporter(): BenchmarkReporter {
       const totalCount = suite.results.length;
       const avgSpeedup =
         suite.comparisons.length > 0
-          ? suite.comparisons.reduce((sum, c) => sum + c.speedup, 0) / suite.comparisons.length
+          ? suite.comparisons.reduce((sum, c) => sum + c.speedup, 0) /
+            suite.comparisons.length
           : 0;
 
       lines.push('## Summary');
@@ -192,7 +218,7 @@ export function createMarkdownReporter(): BenchmarkReporter {
       lines.push('');
       lines.push('- \\* p < 0.05 (statistically significant)');
       lines.push('- \\*\\* p < 0.01 (highly significant)');
-      lines.push('- Effect size (Cohen\'s d): small < 0.5, medium 0.5-0.8, large > 0.8');
+      lines.push("- Effect size (Cohen's d): small < 0.5, medium 0.5-0.8, large > 0.8");
       lines.push('');
 
       // Footer

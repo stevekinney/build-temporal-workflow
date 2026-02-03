@@ -32,22 +32,34 @@ import { clearBenchmarkMarks, createBenchmarkMarker } from './utils/timing';
 const DEFAULT_FIXTURES: FixtureConfig[] = [
   {
     name: 'small',
-    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/small/workflows.ts'),
+    workflowsPath: join(
+      dirname(fileURLToPath(import.meta.url)),
+      'fixtures/small/workflows.ts',
+    ),
     description: 'Small fixture (~5 modules, baseline)',
   },
   {
     name: 'medium',
-    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/medium/workflows.ts'),
+    workflowsPath: join(
+      dirname(fileURLToPath(import.meta.url)),
+      'fixtures/medium/workflows.ts',
+    ),
     description: 'Medium fixture (~20 modules, realistic)',
   },
   {
     name: 'large',
-    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/large/workflows.ts'),
+    workflowsPath: join(
+      dirname(fileURLToPath(import.meta.url)),
+      'fixtures/large/workflows.ts',
+    ),
     description: 'Large fixture (~50+ modules, stress test)',
   },
   {
     name: 'heavy-deps',
-    workflowsPath: join(dirname(fileURLToPath(import.meta.url)), 'fixtures/heavy-deps/workflows.ts'),
+    workflowsPath: join(
+      dirname(fileURLToPath(import.meta.url)),
+      'fixtures/heavy-deps/workflows.ts',
+    ),
     description: 'Heavy dependencies fixture',
   },
 ];
@@ -158,7 +170,11 @@ async function benchmarkFixture(
   // Warmup runs (discarded)
   for (let i = 0; i < warmup; i++) {
     try {
-      await runIteration(adapter, fixture.workflowsPath, `warmup-${fixture.name}-${adapter.name}-${i}`);
+      await runIteration(
+        adapter,
+        fixture.workflowsPath,
+        `warmup-${fixture.name}-${adapter.name}-${i}`,
+      );
     } catch (error) {
       // Warmup failure is acceptable, continue
       if (verbose) {
@@ -258,7 +274,9 @@ function calculateComparisons(results: BenchmarkResult[]): BundlerComparison[] {
       const esbuildFaster = esbuildTime < webpackTime;
       const faster = esbuildFaster ? 'esbuild' : 'webpack';
       const slower = esbuildFaster ? 'webpack' : 'esbuild';
-      const speedup = esbuildFaster ? webpackTime / esbuildTime : esbuildTime / webpackTime;
+      const speedup = esbuildFaster
+        ? webpackTime / esbuildTime
+        : esbuildTime / webpackTime;
 
       // Calculate statistical significance
       const esbuildTimes = esbuild.measurements.map((m) => m.timeMs);
@@ -288,7 +306,9 @@ function calculateComparisons(results: BenchmarkResult[]): BundlerComparison[] {
 /**
  * Run the complete benchmark suite.
  */
-export async function runBenchmarks(options: RunnerOptions = {}): Promise<BenchmarkSuite> {
+export async function runBenchmarks(
+  options: RunnerOptions = {},
+): Promise<BenchmarkSuite> {
   const {
     runs = 15,
     warmup = 5,
@@ -339,11 +359,20 @@ export async function runBenchmarks(options: RunnerOptions = {}): Promise<Benchm
     }
 
     for (const bundler of bundlers) {
-      const result = await benchmarkFixture(fixture, bundler, runs, warmup, verbose, filterOutliers);
+      const result = await benchmarkFixture(
+        fixture,
+        bundler,
+        runs,
+        warmup,
+        verbose,
+        filterOutliers,
+      );
       results.push(result);
 
       if (verbose && result.success) {
-        console.log(`  ${bundler.name}: ${result.time.mean.toFixed(2)}ms ± ${result.time.stdDev.toFixed(2)}ms`);
+        console.log(
+          `  ${bundler.name}: ${result.time.mean.toFixed(2)}ms ± ${result.time.stdDev.toFixed(2)}ms`,
+        );
       } else if (verbose && !result.success) {
         console.log(`  ${bundler.name}: FAILED - ${result.error}`);
       }

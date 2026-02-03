@@ -13,7 +13,8 @@ const SCHEMA_VERSION = '1.0.0';
 /**
  * JSON schema URL (placeholder for future schema hosting).
  */
-const SCHEMA_URL = 'https://github.com/temporalio/build-temporal-workflow/blob/main/bench/schema.json';
+const SCHEMA_URL =
+  'https://github.com/temporalio/build-temporal-workflow/blob/main/bench/schema.json';
 
 /**
  * Create the JSON output with schema metadata.

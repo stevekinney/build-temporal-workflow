@@ -8,11 +8,22 @@ import type { Order, PaginatedResult, PaginationParams, User } from '../../types
 import { groupBy } from '../../utils';
 
 interface AnalyticsActivities {
-  getOrdersInRange(start: Date, end: Date, pagination: PaginationParams): Promise<PaginatedResult<Order>>;
-  getUsersInRange(start: Date, end: Date, pagination: PaginationParams): Promise<PaginatedResult<User>>;
+  getOrdersInRange(
+    start: Date,
+    end: Date,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Order>>;
+  getUsersInRange(
+    start: Date,
+    end: Date,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<User>>;
   calculateRevenue(orders: Order[]): Promise<number>;
   calculateAverageOrderValue(orders: Order[]): Promise<number>;
-  getTopProducts(orders: Order[], limit: number): Promise<Array<{ productId: string; revenue: number; quantity: number }>>;
+  getTopProducts(
+    orders: Order[],
+    limit: number,
+  ): Promise<Array<{ productId: string; revenue: number; quantity: number }>>;
   saveReport(reportType: string, data: Record<string, unknown>): Promise<string>;
   sendReportEmail(reportId: string, recipients: string[]): Promise<void>;
   logAnalytics(action: string, details: string): Promise<void>;
@@ -34,7 +45,10 @@ export async function generateSalesReportWorkflow(
   startDate: Date,
   endDate: Date,
 ): Promise<SalesReport> {
-  await activities.logAnalytics('sales_report', `${startDate.toISOString()} - ${endDate.toISOString()}`);
+  await activities.logAnalytics(
+    'sales_report',
+    `${startDate.toISOString()} - ${endDate.toISOString()}`,
+  );
 
   // Fetch all orders in range
   const allOrders: Order[] = [];
@@ -65,7 +79,10 @@ export async function generateSalesReportWorkflow(
   };
 
   // Save report
-  const reportId = await activities.saveReport('sales', report as unknown as Record<string, unknown>);
+  const reportId = await activities.saveReport(
+    'sales',
+    report as unknown as Record<string, unknown>,
+  );
   await activities.logAnalytics('sales_report_saved', reportId);
 
   return report;
@@ -82,7 +99,10 @@ export async function generateUserActivityReportWorkflow(
   startDate: Date,
   endDate: Date,
 ): Promise<UserActivityReport> {
-  await activities.logAnalytics('user_report', `${startDate.toISOString()} - ${endDate.toISOString()}`);
+  await activities.logAnalytics(
+    'user_report',
+    `${startDate.toISOString()} - ${endDate.toISOString()}`,
+  );
 
   // Fetch all users in range
   const allUsers: User[] = [];
@@ -113,7 +133,10 @@ export async function generateUserActivityReportWorkflow(
     usersByRole,
   };
 
-  const reportId = await activities.saveReport('user_activity', report as unknown as Record<string, unknown>);
+  const reportId = await activities.saveReport(
+    'user_activity',
+    report as unknown as Record<string, unknown>,
+  );
   await activities.logAnalytics('user_report_saved', reportId);
 
   return report;
@@ -127,7 +150,10 @@ export async function scheduledDailyReportWorkflow(recipients: string[]): Promis
 
     // Generate and send sales report
     const salesReport = await generateSalesReportWorkflow(yesterday, now);
-    const salesReportId = await activities.saveReport('daily_sales', salesReport as unknown as Record<string, unknown>);
+    const salesReportId = await activities.saveReport(
+      'daily_sales',
+      salesReport as unknown as Record<string, unknown>,
+    );
     await activities.sendReportEmail(salesReportId, recipients);
 
     // Wait until next day

@@ -19,10 +19,7 @@ export function generateOrderNumber(): string {
   return `ORD-${year}${month}${day}-${random}`;
 }
 
-export function paginate<T>(
-  items: T[],
-  params: PaginationParams,
-): PaginatedResult<T> {
+export function paginate<T>(items: T[], params: PaginationParams): PaginatedResult<T> {
   const { page, pageSize, sortBy, sortOrder = 'asc' } = params;
 
   const sorted = [...items];

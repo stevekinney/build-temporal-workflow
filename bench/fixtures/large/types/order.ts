@@ -45,7 +45,12 @@ export interface PaymentInfo {
   paidAt?: Date;
 }
 
-export type PaymentMethod = 'credit_card' | 'debit_card' | 'paypal' | 'bank_transfer' | 'crypto';
+export type PaymentMethod =
+  | 'credit_card'
+  | 'debit_card'
+  | 'paypal'
+  | 'bank_transfer'
+  | 'crypto';
 
 export type PaymentStatus = 'pending' | 'authorized' | 'captured' | 'failed' | 'refunded';
 

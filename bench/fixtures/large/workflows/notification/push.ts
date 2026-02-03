@@ -8,8 +8,17 @@ import type { Order, User } from '../../types';
 import { truncate } from '../../utils';
 
 interface PushActivities {
-  sendPush(userId: string, title: string, body: string, data?: Record<string, unknown>): Promise<boolean>;
-  sendBulkPush(userIds: string[], title: string, body: string): Promise<{ sent: number; failed: number }>;
+  sendPush(
+    userId: string,
+    title: string,
+    body: string,
+    data?: Record<string, unknown>,
+  ): Promise<boolean>;
+  sendBulkPush(
+    userIds: string[],
+    title: string,
+    body: string,
+  ): Promise<{ sent: number; failed: number }>;
   getUserDevices(userId: string): Promise<string[]>;
   isUserSubscribed(userId: string): Promise<boolean>;
   logPush(userId: string, title: string, status: string): Promise<void>;

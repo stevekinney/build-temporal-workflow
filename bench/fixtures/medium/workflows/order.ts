@@ -44,10 +44,7 @@ const {
 /**
  * Complete order processing workflow with saga pattern.
  */
-export async function orderWorkflow(
-  userId: string,
-  items: OrderItem[],
-): Promise<Order> {
+export async function orderWorkflow(userId: string, items: OrderItem[]): Promise<Order> {
   // Calculate total
   const total = calculateOrderTotal(items);
 

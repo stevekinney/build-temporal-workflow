@@ -11,7 +11,10 @@ export function formatCurrency(amount: number, currency = 'USD'): string {
   }).format(amount);
 }
 
-export function formatDate(date: Date, format: 'short' | 'long' | 'iso' = 'short'): string {
+export function formatDate(
+  date: Date,
+  format: 'short' | 'long' | 'iso' = 'short',
+): string {
   switch (format) {
     case 'long':
       return new Intl.DateTimeFormat('en-US', {
@@ -40,9 +43,7 @@ export function formatOrderNumber(orderNumber: string): string {
 }
 
 export function formatOrderTotals(totals: OrderTotals, currency = 'USD'): string {
-  const lines = [
-    `Subtotal: ${formatCurrency(totals.subtotal, currency)}`,
-  ];
+  const lines = [`Subtotal: ${formatCurrency(totals.subtotal, currency)}`];
   if (totals.discount > 0) {
     lines.push(`Discount: -${formatCurrency(totals.discount, currency)}`);
   }

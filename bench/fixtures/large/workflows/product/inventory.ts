@@ -9,10 +9,18 @@ import { isLowStock } from '../../utils';
 
 interface InventoryActivities {
   getProduct(productId: string): Promise<Product>;
-  updateInventory(productId: string, inventory: Partial<InventoryInfo>): Promise<InventoryInfo>;
+  updateInventory(
+    productId: string,
+    inventory: Partial<InventoryInfo>,
+  ): Promise<InventoryInfo>;
   reserveStock(productId: string, quantity: number): Promise<boolean>;
   releaseStock(productId: string, quantity: number): Promise<void>;
-  transferStock(fromWarehouse: string, toWarehouse: string, productId: string, quantity: number): Promise<boolean>;
+  transferStock(
+    fromWarehouse: string,
+    toWarehouse: string,
+    productId: string,
+    quantity: number,
+  ): Promise<boolean>;
   reorderStock(productId: string, quantity: number): Promise<string>;
   sendLowStockAlert(productId: string, available: number): Promise<void>;
   logInventoryChange(productId: string, action: string, quantity: number): Promise<void>;
@@ -84,7 +92,11 @@ export async function transferInventoryWorkflow(
   );
 
   if (transferred) {
-    await activities.logInventoryChange(productId, `transfer:${fromWarehouse}->${toWarehouse}`, quantity);
+    await activities.logInventoryChange(
+      productId,
+      `transfer:${fromWarehouse}->${toWarehouse}`,
+      quantity,
+    );
   }
 
   return transferred;
@@ -98,7 +110,8 @@ export async function autoReorderWorkflow(productId: string): Promise<string | n
   }
 
   // Reorder to bring stock up to 3x threshold
-  const reorderQuantity = product.inventory.lowStockThreshold * 3 - product.inventory.available;
+  const reorderQuantity =
+    product.inventory.lowStockThreshold * 3 - product.inventory.available;
 
   const orderId = await activities.reorderStock(productId, reorderQuantity);
   await activities.logInventoryChange(productId, 'reorder', reorderQuantity);

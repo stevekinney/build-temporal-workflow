@@ -77,10 +77,7 @@ function groupByKey<T extends Record<string, unknown>>(
 /**
  * Get unique values for a key.
  */
-function uniqueBy<T extends Record<string, unknown>>(
-  items: T[],
-  key: keyof T,
-): T[] {
+function uniqueBy<T extends Record<string, unknown>>(items: T[], key: keyof T): T[] {
   const seen = new Set<unknown>();
   return items.filter((item) => {
     const k = item[key];

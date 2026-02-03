@@ -8,8 +8,17 @@ import type { Order, User } from '../../types';
 import { formatOrderSummary, isValidEmail } from '../../utils';
 
 interface EmailActivities {
-  sendEmail(to: string, subject: string, body: string, template?: string): Promise<boolean>;
-  sendBulkEmail(recipients: string[], subject: string, body: string): Promise<{ sent: number; failed: number }>;
+  sendEmail(
+    to: string,
+    subject: string,
+    body: string,
+    template?: string,
+  ): Promise<boolean>;
+  sendBulkEmail(
+    recipients: string[],
+    subject: string,
+    body: string,
+  ): Promise<{ sent: number; failed: number }>;
   getEmailTemplate(name: string): Promise<string>;
   renderTemplate(template: string, data: Record<string, unknown>): Promise<string>;
   validateEmail(email: string): Promise<boolean>;
@@ -101,9 +110,7 @@ export async function sendMarketingCampaignWorkflow(
   const template = await activities.getEmailTemplate(templateName);
   const body = await activities.renderTemplate(template, data);
 
-  const emails = recipients
-    .filter((u) => isValidEmail(u.email))
-    .map((u) => u.email);
+  const emails = recipients.filter((u) => isValidEmail(u.email)).map((u) => u.email);
 
   const result = await activities.sendBulkEmail(emails, subject, body);
 

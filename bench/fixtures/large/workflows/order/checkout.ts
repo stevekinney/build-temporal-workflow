@@ -57,7 +57,11 @@ export async function checkoutWorkflow(
     }
 
     // Process payment
-    const payment = await activities.processPayment(order.id, totals.total, paymentMethod);
+    const payment = await activities.processPayment(
+      order.id,
+      totals.total,
+      paymentMethod,
+    );
     if (payment.status !== 'captured') {
       throw new Error('Payment failed');
     }

@@ -115,7 +115,10 @@ export function iqr(values: number[]): number {
  * Filter outliers using IQR method.
  * Values below Q1 - 1.5*IQR or above Q3 + 1.5*IQR are considered outliers.
  */
-export function filterOutliers(values: number[]): { filtered: number[]; outliersRemoved: number } {
+export function filterOutliers(values: number[]): {
+  filtered: number[];
+  outliersRemoved: number;
+} {
   if (values.length < 4) {
     return { filtered: values, outliersRemoved: 0 };
   }
@@ -239,7 +242,8 @@ export function welchTTest(sample1: number[], sample2: number[]): number {
   const t = (m1 - m2) / Math.sqrt(se1 + se2);
 
   // Welch-Satterthwaite degrees of freedom
-  const df = Math.pow(se1 + se2, 2) / (Math.pow(se1, 2) / (n1 - 1) + Math.pow(se2, 2) / (n2 - 1));
+  const df =
+    Math.pow(se1 + se2, 2) / (Math.pow(se1, 2) / (n1 - 1) + Math.pow(se2, 2) / (n2 - 1));
 
   // Calculate p-value using t-distribution approximation
   return tDistributionPValue(Math.abs(t), df);

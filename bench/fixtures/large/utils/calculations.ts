@@ -19,7 +19,11 @@ export function calculateDiscount(items: OrderItem[]): number {
   return items.reduce((sum, item) => sum + (item.discount ?? 0), 0);
 }
 
-export function calculateTax(subtotal: number, discount: number, taxRate: number): number {
+export function calculateTax(
+  subtotal: number,
+  discount: number,
+  taxRate: number,
+): number {
   return Math.round((subtotal - discount) * taxRate * 100) / 100;
 }
 
@@ -28,7 +32,8 @@ export function calculateShipping(
   method: 'standard' | 'express' | 'overnight' | 'pickup',
 ): number {
   if (method === 'pickup') return 0;
-  if (subtotal >= 100) return method === 'standard' ? 0 : method === 'express' ? 9.99 : 24.99;
+  if (subtotal >= 100)
+    return method === 'standard' ? 0 : method === 'express' ? 9.99 : 24.99;
   return method === 'standard' ? 5.99 : method === 'express' ? 14.99 : 29.99;
 }
 

@@ -19,7 +19,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-import { createConsoleReporter, createJsonReporter, createMarkdownReporter } from './reporters';
+import {
+  createConsoleReporter,
+  createJsonReporter,
+  createMarkdownReporter,
+} from './reporters';
 import { getBundlerNames, getFixtures, runBenchmarks } from './runner';
 import type { BenchmarkReporter, RunnerOptions } from './types';
 
@@ -205,7 +209,9 @@ async function main(): Promise<void> {
     const validFixtures = getFixtures().map((f) => f.name);
     for (const fixture of options.fixtures) {
       if (!validFixtures.includes(fixture)) {
-        console.error(`Error: Unknown fixture '${fixture}'. Valid fixtures: ${validFixtures.join(', ')}`);
+        console.error(
+          `Error: Unknown fixture '${fixture}'. Valid fixtures: ${validFixtures.join(', ')}`,
+        );
         process.exit(1);
       }
     }
@@ -216,7 +222,9 @@ async function main(): Promise<void> {
     const validBundlers = getBundlerNames();
     for (const bundler of options.bundlers) {
       if (!validBundlers.includes(bundler)) {
-        console.error(`Error: Unknown bundler '${bundler}'. Valid bundlers: ${validBundlers.join(', ')}`);
+        console.error(
+          `Error: Unknown bundler '${bundler}'. Valid bundlers: ${validBundlers.join(', ')}`,
+        );
         process.exit(1);
       }
     }
