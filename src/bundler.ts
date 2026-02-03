@@ -20,12 +20,14 @@ import { loadDeterminismPolicy } from './policy';
 import { shimEsbuildOutput } from './shim';
 import { createTsconfigPathsPlugin, findTsconfig } from './tsconfig-paths';
 import type {
+  BuildMetadata,
   BundleContext,
   BundleMetadata,
   BundleOptions,
   BundlerPlugin,
   InputFlavor,
   Logger,
+  WatchOptions,
   WorkflowBundle,
 } from './types';
 import { getBundlerVersion, getTemporalSdkVersion } from './validate';
@@ -95,6 +97,44 @@ const ENFORCED_OPTIONS: Partial<esbuild.BuildOptions> = {
   charset: 'utf8', // Skip charset detection
   legalComments: 'none', // Smaller output, remove license comments
 };
+
+/**
+ * Collect build metadata (git info, CI environment, etc.).
+ */
+function collectBuildMetadata(): BuildMetadata {
+  const meta: BuildMetadata = {
+    buildTime: new Date().toISOString(),
+    runtimeVersion:
+      typeof Bun !== 'undefined' ? `bun/${Bun.version}` : `node/${process.version}`,
+  };
+
+  // Try to get git info
+  try {
+    const gitCommit = Bun.spawnSync(['git', 'rev-parse', 'HEAD']);
+    if (gitCommit.exitCode === 0) {
+      meta.gitCommit = gitCommit.stdout.toString().trim();
+    }
+    const gitBranch = Bun.spawnSync(['git', 'rev-parse', '--abbrev-ref', 'HEAD']);
+    if (gitBranch.exitCode === 0) {
+      meta.gitBranch = gitBranch.stdout.toString().trim();
+    }
+  } catch {
+    // Git not available
+  }
+
+  // Detect CI environment
+  if (process.env['GITHUB_ACTIONS']) {
+    meta.ci = 'github-actions';
+  } else if (process.env['GITLAB_CI']) {
+    meta.ci = 'gitlab-ci';
+  } else if (process.env['CIRCLECI']) {
+    meta.ci = 'circleci';
+  } else if (process.env['CI']) {
+    meta.ci = 'ci';
+  }
+
+  return meta;
+}
 
 /**
  * Resolve the tsconfig path from options.
@@ -425,6 +465,7 @@ export class WorkflowCodeBundler {
     });
 
     // Build metadata
+    const buildMeta = collectBuildMetadata();
     const metadata: BundleMetadata | undefined = this.report
       ? {
           createdAt: new Date().toISOString(),
@@ -434,6 +475,7 @@ export class WorkflowCodeBundler {
           temporalSdkVersion: getTemporalSdkVersion() ?? 'unknown',
           externals: this.ignoreModules.length > 0 ? this.ignoreModules : undefined,
           warnings: warnings.length > 0 ? warnings : undefined,
+          buildMetadata: buildMeta,
         }
       : undefined;
 
@@ -602,8 +644,14 @@ export class WorkflowCodeBundler {
    * Watch for changes and rebuild the bundle.
    *
    * Uses esbuild's context.watch() for efficient incremental rebuilds.
+   *
+   * @param onChange - Callback invoked on each rebuild
+   * @param watchOptions - Optional watch configuration (e.g., debounce interval)
    */
-  async watch(onChange: (bundle: WorkflowBundle | null, error?: Error) => void): Promise<{
+  async watch(
+    onChange: (bundle: WorkflowBundle | null, error?: Error) => void,
+    watchOptions?: WatchOptions,
+  ): Promise<{
     stop(): Promise<void>;
     readonly running: boolean;
   }> {
@@ -635,6 +683,8 @@ export class WorkflowCodeBundler {
     const buildOptions = this.createBuildOptions();
 
     let running = true;
+    const debounceMs = watchOptions?.debounce ?? 0;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Create esbuild context with watch plugin
     const ctx = await esbuild.context({
@@ -647,11 +697,23 @@ export class WorkflowCodeBundler {
             build.onEnd((result) => {
               if (!running) return;
 
-              try {
-                const bundle = this.processBuildResult(result, entryHash);
-                onChange(bundle);
-              } catch (error) {
-                onChange(null, error instanceof Error ? error : new Error(String(error)));
+              const deliver = () => {
+                try {
+                  const bundle = this.processBuildResult(result, entryHash);
+                  onChange(bundle);
+                } catch (error) {
+                  onChange(
+                    null,
+                    error instanceof Error ? error : new Error(String(error)),
+                  );
+                }
+              };
+
+              if (debounceMs > 0) {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(deliver, debounceMs);
+              } else {
+                deliver();
               }
             });
           },

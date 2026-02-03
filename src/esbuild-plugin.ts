@@ -15,6 +15,7 @@ import { builtinModules } from 'node:module';
 
 import type * as esbuild from 'esbuild';
 
+import { formatAlternative, getAlternative } from './alternatives';
 import {
   getModuleOverridePath,
   isAllowedBuiltin,
@@ -527,12 +528,17 @@ export function createTemporalPlugin(
 
       // Stub for forbidden modules - the bundler will check state.foundProblematicModules
       // after the build and throw a proper error
-      build.onLoad({ filter: /.*/, namespace: 'temporal-forbidden' }, (args) => ({
-        contents: createStubModule(
-          `Module "${args.path}" is forbidden in workflow code as it may break determinism.`,
-        ),
-        loader: 'js',
-      }));
+      build.onLoad({ filter: /.*/, namespace: 'temporal-forbidden' }, (args) => {
+        let message = `Module "${args.path}" is forbidden in workflow code as it may break determinism.`;
+        const alt = getAlternative(args.path);
+        if (alt) {
+          message += ` ${formatAlternative(alt)}`;
+        }
+        return {
+          contents: createStubModule(message),
+          loader: 'js',
+        };
+      });
 
       // ============================================================
       // 5. Detect dynamic imports (import() expressions)

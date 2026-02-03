@@ -8,21 +8,25 @@
  * - doctor: Validate environment and configuration
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import * as esbuild from 'esbuild';
 
 import { bundleWorkflowCode, createConsoleLogger, watchWorkflowCode } from './bundler';
+import { formatCIReportText, generateCIReport } from './ci-output';
 import {
   findAllDependencyChains,
   formatDependencyChain,
   summarizeDependencyChain,
 } from './dependency-chain';
+import { verifyDeterministicBuild } from './determinism-verify';
 import { generateEntrypoint } from './entrypoint';
 import { WorkflowBundleError } from './errors';
 import { createTemporalPlugin } from './esbuild-plugin';
 import { loadDeterminismPolicy } from './policy';
+import { generateSigningKeyPair, signBundle } from './signing';
+import { analyzeSize, parseSize } from './size-analysis';
 import type { BundleOptions } from './types';
 import { getBundlerVersion, getTemporalSdkVersion } from './validate';
 
@@ -76,6 +80,11 @@ interface CLIOptions {
   verbose?: boolean;
   help?: boolean;
   watch?: boolean;
+  budget?: string;
+  ci?: boolean;
+  strict?: boolean;
+  privateKey?: string;
+  publicKey?: string;
 }
 
 function parseArgs(args: string[]): { command: string; options: CLIOptions } {
@@ -90,7 +99,17 @@ function parseArgs(args: string[]): { command: string; options: CLIOptions } {
       // First non-flag argument is the command
       if (
         !commandSet &&
-        ['build', 'analyze', 'doctor', 'help', 'version'].includes(arg)
+        [
+          'build',
+          'analyze',
+          'doctor',
+          'help',
+          'version',
+          'check',
+          'verify',
+          'sign',
+          'keygen',
+        ].includes(arg)
       ) {
         command = arg;
         commandSet = true;
@@ -147,6 +166,21 @@ function parseArgs(args: string[]): { command: string; options: CLIOptions } {
       case '--version':
         command = 'version';
         break;
+      case '--budget':
+        options.budget = args[++i]!;
+        break;
+      case '--ci':
+        options.ci = true;
+        break;
+      case '--strict':
+        options.strict = true;
+        break;
+      case '--private-key':
+        options.privateKey = args[++i]!;
+        break;
+      case '--public-key':
+        options.publicKey = args[++i]!;
+        break;
     }
   }
 
@@ -166,6 +200,10 @@ ${colors.bold}USAGE${colors.reset}
 ${colors.bold}COMMANDS${colors.reset}
   build <path>     Bundle workflow code for use with Temporal Worker
   analyze <path>   Analyze bundle composition and dependencies
+  check <path>     Build and validate against size budgets
+  verify <path>    Verify build determinism (reproducible builds)
+  sign <path>      Sign a bundle with Ed25519 for deployment verification
+  keygen           Generate a new Ed25519 signing key pair
   doctor           Validate environment and SDK compatibility
   help             Show this help message
   version          Show version information
@@ -180,6 +218,11 @@ ${colors.bold}BUILD OPTIONS${colors.reset}
   --payload-converter <p>   Path to custom payload converter
   --failure-converter <p>   Path to custom failure converter
   --json                    Output result as JSON
+  --budget <size>           Set size budget (e.g., 500KB, 1MB)
+  --ci                      CI-friendly output mode
+  --strict                  Strict validation (fail on warnings)
+  --private-key <path>      Ed25519 private key for signing
+  --public-key <path>       Ed25519 public key for verification
   -v, --verbose             Enable verbose logging
 
 ${colors.bold}EXAMPLES${colors.reset}
@@ -191,6 +234,15 @@ ${colors.bold}EXAMPLES${colors.reset}
 
   ${colors.dim}# Analyze bundle composition${colors.reset}
   bundle-temporal-workflow analyze ./src/workflows.ts
+
+  ${colors.dim}# Check bundle against a size budget${colors.reset}
+  bundle-temporal-workflow check ./src/workflows.ts --budget 500KB --strict
+
+  ${colors.dim}# Verify reproducible builds${colors.reset}
+  bundle-temporal-workflow verify ./src/workflows.ts
+
+  ${colors.dim}# Sign a bundle for deployment${colors.reset}
+  bundle-temporal-workflow sign ./dist/workflow-bundle.js --private-key ./keys/private.key
 
   ${colors.dim}# Check environment${colors.reset}
   bundle-temporal-workflow doctor
@@ -752,6 +804,184 @@ function simplifyPath(path: string): string {
   return path;
 }
 
+async function checkCommand(options: CLIOptions): Promise<void> {
+  if (!options.workflowsPath) {
+    error('Missing required argument: workflows path');
+    log('\nUsage: bundle-temporal-workflow check <path> [--budget <size>] [--strict]');
+    process.exit(1);
+  }
+
+  const workflowsPath = resolve(options.workflowsPath);
+
+  if (!existsSync(workflowsPath)) {
+    error(`Workflows path does not exist: ${workflowsPath}`);
+    process.exit(1);
+  }
+
+  try {
+    const bundle = await bundleWorkflowCode({
+      workflowsPath,
+      mode: options.mode ?? 'production',
+      sourceMap: 'none',
+      logger: options.verbose ? createConsoleLogger() : undefined,
+      report: true,
+    });
+
+    const budget = options.budget ? { total: parseSize(options.budget) } : undefined;
+    const analysis = analyzeSize(bundle, budget);
+
+    if (options.ci || options.json) {
+      const report = generateCIReport(bundle, { sizeAnalysis: analysis });
+      if (options.strict && analysis.budgetResult?.status === 'warn') {
+        report.success = false;
+      }
+      log(options.json ? JSON.stringify(report, null, 2) : formatCIReportText(report));
+      if (!report.success) process.exit(1);
+    } else {
+      heading('Bundle Check');
+      info(
+        `Size: ${formatSize(analysis.totalSize)} (gzip: ${formatSize(analysis.gzipSize)})`,
+      );
+      info(`Modules: ${analysis.moduleCount}`);
+
+      if (analysis.budgetResult) {
+        const icon =
+          analysis.budgetResult.status === 'pass'
+            ? colors.green + '✓'
+            : analysis.budgetResult.status === 'warn'
+              ? colors.yellow + '!'
+              : colors.red + '✗';
+        log(`${icon}${colors.reset} ${analysis.budgetResult.message}`);
+      }
+
+      if (analysis.budgetResult?.status === 'fail') process.exit(1);
+      if (options.strict && analysis.budgetResult?.status === 'warn') process.exit(1);
+    }
+  } catch (err) {
+    error(`Check failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+async function verifyCommand(options: CLIOptions): Promise<void> {
+  if (!options.workflowsPath) {
+    error('Missing required argument: workflows path');
+    log('\nUsage: bundle-temporal-workflow verify <path>');
+    process.exit(1);
+  }
+
+  const workflowsPath = resolve(options.workflowsPath);
+
+  if (!existsSync(workflowsPath)) {
+    error(`Workflows path does not exist: ${workflowsPath}`);
+    process.exit(1);
+  }
+
+  try {
+    info('Verifying build determinism (building 3 times)...');
+
+    const result = await verifyDeterministicBuild({
+      workflowsPath,
+      mode: options.mode ?? 'production',
+      sourceMap: 'none',
+    });
+
+    if (options.json) {
+      log(JSON.stringify(result, null, 2));
+    } else {
+      if (result.deterministic) {
+        success(
+          `Build is deterministic (${result.buildCount} builds, hash: ${result.referenceHash.slice(0, 12)}...)`,
+        );
+      } else {
+        error('Build is NOT deterministic!');
+        if (result.differences) {
+          heading('Differences found:');
+          for (const diff of result.differences) {
+            log(`  ${diff}`);
+          }
+        }
+        process.exit(1);
+      }
+    }
+  } catch (err) {
+    error(`Verify failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+async function signCommand(options: CLIOptions): Promise<void> {
+  if (!options.workflowsPath) {
+    error('Missing required argument: bundle path');
+    log('\nUsage: bundle-temporal-workflow sign <path> --private-key <key-file>');
+    process.exit(1);
+  }
+
+  if (!options.privateKey) {
+    error('Missing required option: --private-key');
+    process.exit(1);
+  }
+
+  const bundlePath = resolve(options.workflowsPath);
+  const keyPath = resolve(options.privateKey);
+
+  if (!existsSync(bundlePath)) {
+    error(`Bundle file does not exist: ${bundlePath}`);
+    process.exit(1);
+  }
+
+  if (!existsSync(keyPath)) {
+    error(`Private key file does not exist: ${keyPath}`);
+    process.exit(1);
+  }
+
+  try {
+    const code = readFileSync(bundlePath, 'utf-8');
+    const privateKey = readFileSync(keyPath, 'utf-8').trim();
+
+    const signed = await signBundle({ code }, privateKey);
+    const outputPath = options.output ? resolve(options.output) : bundlePath;
+
+    const output = JSON.stringify({
+      code: signed.code,
+      signature: signed.signature,
+      publicKey: signed.publicKey,
+    });
+    writeFileSync(outputPath, output);
+
+    success(`Bundle signed and written to ${outputPath}`);
+    info(`Public key: ${signed.publicKey.slice(0, 32)}...`);
+  } catch (err) {
+    error(`Signing failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+async function keygenCommand(options: CLIOptions): Promise<void> {
+  try {
+    const keyPair = await generateSigningKeyPair();
+
+    if (options.json) {
+      log(JSON.stringify(keyPair, null, 2));
+    } else {
+      heading('Generated Ed25519 Key Pair');
+      log(`\n${colors.bold}Private Key:${colors.reset}`);
+      log(keyPair.privateKey);
+      log(`\n${colors.bold}Public Key:${colors.reset}`);
+      log(keyPair.publicKey);
+      log(
+        `\n${colors.dim}Store the private key securely (e.g., CI secrets).${colors.reset}`,
+      );
+      log(
+        `${colors.dim}Distribute the public key for bundle verification.${colors.reset}`,
+      );
+    }
+  } catch (err) {
+    error(`Key generation failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const { command, options } = parseArgs(args);
@@ -767,6 +997,18 @@ async function main(): Promise<void> {
       break;
     case 'analyze':
       await analyzeCommand(options);
+      break;
+    case 'check':
+      await checkCommand(options);
+      break;
+    case 'verify':
+      await verifyCommand(options);
+      break;
+    case 'sign':
+      await signCommand(options);
+      break;
+    case 'keygen':
+      await keygenCommand(options);
       break;
     case 'doctor':
       doctorCommand(options);

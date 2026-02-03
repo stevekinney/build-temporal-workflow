@@ -1,14 +1,42 @@
 # build-temporal-workflow
 
-A drop-in replacement for `@temporalio/worker`'s `bundleWorkflowCode` that swaps Webpack for esbuild (or Bun.build). Same API, same output, 9-11x faster builds, 94% less memory.
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-## The Problem
+A drop-in replacement for `@temporalio/worker`'s `bundleWorkflowCode` that swaps Webpack for esbuild (or Bun.build). Same API, same output, 9-11x faster builds, 94% less memory. Includes multi-queue orchestration, bundle size analysis, determinism checking with source-mapped violations, workflow export validation, Ed25519 bundle signing, CI/CD integration, and a plugin system.
 
-Every Temporal TypeScript Worker needs to bundle workflow code into a self-contained isolate-safe package. The official SDK uses Webpack for this. Webpack works, but it was designed for frontend asset pipelines, not for bundling a few hundred KB of deterministic workflow code. The result: 500-630ms builds that allocate 50+ MB of heap, every single time. In a test suite that spins up Workers, that overhead multiplies fast.
+## Documentation
 
-This library replaces the Webpack bundler with esbuild, which is purpose-built for speed. esbuild is written in Go, does its own parsing and code generation, and can bundle the same workflow code in 49-57ms on Node or under 32ms on Bun. Memory drops by 94%. The output is identical in structure: a CJS bundle that assigns `globalThis.__TEMPORAL__` and works with any standard Temporal Worker.
+- [Multi-Queue Builds](./documentation/multi-queue-builds.md)—Bundle multiple task queues, activity bundling, coordinated watch
+- [Bundle Analysis](./documentation/bundle-analysis.md)—Size budgets, import cost analysis, build comparison
+- [Determinism Checking](./documentation/determinism-checking.md)—Violation source mapping, alternatives, history analysis
+- [Workflow Validation](./documentation/workflow-validation.md)—Export validation, activity types, package boundaries
+- [CI/CD Integration](./documentation/ci-cd-integration.md)—CI output, source map upload, determinism verification
+- [Plugin System](./documentation/plugin-system.md)—Plugin composition, priority, export preservation
+- [TypeScript Integration](./documentation/typescript-integration.md)—Type checking, declaration generation, path alias resolution
+- [Bundle Signing](./documentation/bundle-signing.md)—Ed25519 signing, key generation, verification
+- [Testing](./documentation/testing.md)—Test bundle mode, mocks, relaxed determinism
+- [SDK Compatibility](./documentation/sdk-compatibility.md)—Version matrix, instrumentation
 
-If you're running under Bun, you also get access to `Bun.build` as a backend, which is even faster for small-to-medium bundles.
+## Why This Library Exists
+
+The `bundleWorkflowCode` function in `@temporalio/worker` does two things:
+
+1. it resolves your workflow code's dependency graph, and
+2. it concatenates everything into a single CJS file that can run inside Temporal's V8 isolate.
+
+That's it. There's no code splitting, no asset pipeline, no HMR, no loader ecosystem to support. It's a straightforward bundling job.
+
+[Webpack](https://webpack.js.org/) is an super-capable tool, but its generality is a liability here. It parses its own configuration schema, initializes a plugin system, builds a module graph through its own resolution algorithm, and runs multiple optimization passes—all for a bundle that _must not be minified_ and _must not be tree-shaken_ as both break workflow determinism.
+
+[esbuild](https://esbuild.github.io/) does the same job _way faster_ because it was designed from the ground up for speed: single-pass architecture, Go's compile-time optimizations, and zero configuration overhead. This library wraps esbuild with the same plugin hooks that Temporal needs—forbidden module detection, determinism policy enforcement, module stub injection—and produces output that is structurally identical to what Webpack generates.
+
+The practical impact shows up in three places:
+
+1. **Test suites**: If your tests create Workers (and they should—integration tests catch real bugs), each test pays the bundling cost. A suite with 20 Worker-creating tests goes from ~10s of bundling overhead to ~1s with esbuild, or ~0.6s with Bun.build. Add the in-memory cache and the second through twentieth tests pay ~0ms.
+2. **Development iteration**: Watch mode with esbuild's incremental rebuild is nearly instant. Webpack's watch mode works but carries the same per-build overhead.
+3. **CI pipelines**: Faster bundling means faster deployments. The memory savings also matter in constrained CI environments where you're running multiple jobs on shared runners.
+
+This library is a drop-in replacement. Same function signature, same output shape, same `WorkflowBundle` type. Swap the import and your Workers keep working.
 
 ## Installation
 
@@ -46,76 +74,6 @@ const worker = await Worker.create({
   // ...
 });
 ```
-
-## Performance
-
-Measured on Apple M1 Max, Node v24.3.0, Bun 1.3.2. The `@temporalio/worker` column is the baseline (Webpack). All times are mean with 95% confidence intervals. 10 runs, 3 warmup, outliers filtered.
-
-### Build Time
-
-| Fixture              | @temporalio/worker |       esbuild (Node) |      Bun.build (Bun) |
-| -------------------- | -----------------: | -------------------: | -------------------: |
-| Small (~5 modules)   |       543ms ± 41ms |  59ms ± 7ms (**9x**) | 29ms ± 5ms (**19x**) |
-| Medium (~20 modules) |       499ms ± 12ms | 49ms ± 8ms (**10x**) | 25ms ± 5ms (**20x**) |
-| Large (~50+ modules) |       537ms ± 31ms |  57ms ± 8ms (**9x**) | 30ms ± 4ms (**18x**) |
-| Heavy dependencies   |      630ms ± 105ms | 55ms ± 5ms (**11x**) | 32ms ± 2ms (**20x**) |
-
-### Memory Usage (Peak Heap)
-
-| Fixture              | @temporalio/worker | esbuild (Node) |      Savings |
-| -------------------- | -----------------: | -------------: | -----------: |
-| Small (~5 modules)   |           52.25 MB |        3.03 MB | **94% less** |
-| Medium (~20 modules) |           51.71 MB |        3.08 MB | **94% less** |
-| Large (~50+ modules) |           54.02 MB |        3.49 MB | **94% less** |
-| Heavy dependencies   |           52.04 MB |        2.82 MB | **95% less** |
-
-To use the Bun bundler backend:
-
-```typescript
-const bundle = await bundleWorkflowCode({
-  workflowsPath: './src/workflows.ts',
-  bundler: 'bun', // explicitly use Bun.build
-});
-```
-
-Run benchmarks yourself:
-
-```bash
-# Quick benchmark (small fixture only)
-bun run benchmark:quick
-
-# Full benchmark suite (10 runs, 3 warmup)
-bun run benchmark:full
-
-# Custom options
-bun run benchmark -r 15 -w 5 -o markdown --file BENCHMARK.md
-
-# Disable outlier filtering
-bun run benchmark --no-filter-outliers
-
-# Compare esbuild vs Bun.build (requires Bun runtime)
-bun run benchmark:bun
-```
-
-The benchmark suite includes statistical analysis with 95% confidence intervals, outlier detection (IQR method), and significance testing (Welch's t-test).
-
-## Why This Library Exists
-
-The `bundleWorkflowCode` function in `@temporalio/worker` does two things: it resolves your workflow code's dependency graph, and it concatenates everything into a single CJS file that can run inside Temporal's V8 isolate. That's it. There's no code splitting, no asset pipeline, no HMR, no loader ecosystem to support. It's a straightforward bundling job.
-
-Webpack is an extraordinarily capable tool, but its generality is a liability here. It parses its own configuration schema, initializes a plugin system, builds a module graph through its own resolution algorithm, and runs multiple optimization passes — all for a bundle that _must not be minified_ and _must not be tree-shaken_ (both break workflow determinism). The result is 500-630ms of wall time and 50+ MB of heap allocation for what amounts to concatenating ~60 modules.
-
-esbuild does the same job in 49-59ms because it was designed from the ground up for speed: single-pass architecture, Go's compile-time optimizations, and zero configuration overhead. This library wraps esbuild with the same plugin hooks that Temporal needs (forbidden module detection, determinism policy enforcement, module stub injection) and produces output that is structurally identical to what Webpack generates.
-
-The practical impact shows up in three places:
-
-1. **Test suites.** If your tests create Workers (and they should — integration tests catch real bugs), each test pays the bundling cost. A suite with 20 Worker-creating tests goes from ~10s of bundling overhead to ~1s with esbuild, or ~0.6s with Bun.build. Add the in-memory cache and the second through twentieth tests pay ~0ms.
-
-2. **Development iteration.** Watch mode with esbuild's incremental rebuild is nearly instant. Webpack's watch mode works but carries the same per-build overhead.
-
-3. **CI pipelines.** Faster bundling means faster deployments. The memory savings also matter in constrained CI environments where you're running multiple jobs on shared runners.
-
-This library is a drop-in replacement. Same function signature, same output shape, same `WorkflowBundle` type. Swap the import and your Workers keep working.
 
 ## Features
 
@@ -226,11 +184,11 @@ for (const violation of result.violations) {
 
 Detects patterns like:
 
-- `Date.now()` — Use `workflow.currentTime()` instead
-- `Math.random()` — Use `workflow.random()` instead
-- `setTimeout`/`setInterval` — Use `workflow.sleep()` instead
-- `fetch`/`axios` — Move to Activities
-- `crypto.randomBytes()` — Use `workflow.uuid4()` or move to Activities
+- `Date.now()`—Use `workflow.currentTime()` instead
+- `Math.random()`—Use `workflow.random()` instead
+- `setTimeout`/`setInterval`—Use `workflow.sleep()` instead
+- `fetch`/`axios`—Move to Activities
+- `crypto.randomBytes()`—Use `workflow.uuid4()` or move to Activities
 
 ### Cross-Runtime Support
 
@@ -344,24 +302,6 @@ textLoader({ extensions: ['.txt', '.md', '.text', '.ascii'] });
 yamlLoader({ extensions: ['.yaml', '.yml', '.eyaml'] });
 ```
 
-The official `@temporalio/worker` bundler can do this too, but requires manual webpack configuration and installing additional loaders:
-
-```typescript
-// With @temporalio/worker, you'd need:
-bundleWorkflowCode({
-  workflowsPath: '...',
-  webpackConfigHook: (config) => {
-    config.module.rules.push(
-      { test: /\.md$/, type: 'asset/source' },
-      { test: /\.toml$/, loader: 'toml-loader' },
-      { test: /\.ya?ml$/, loader: 'yaml-loader' },
-    );
-    return config;
-  },
-});
-// Plus: npm install toml-loader yaml-loader
-```
-
 For TypeScript support, add the type declarations to your `tsconfig.json`:
 
 ```json
@@ -399,6 +339,58 @@ console.log(diff.added); // New workflows
 console.log(diff.removed); // Deleted workflows
 console.log(diff.changed); // Modified workflows
 ```
+
+## Performance
+
+Measured on Apple M1 Max, Node v24.3.0, Bun 1.3.2. The `@temporalio/worker` column is the baseline (Webpack). All times are mean with 95% confidence intervals. 10 runs, 3 warmup, outliers filtered.
+
+### Build Time
+
+| Fixture              | @temporalio/worker |       esbuild (Node) |      Bun.build (Bun) |
+| -------------------- | -----------------: | -------------------: | -------------------: |
+| Small (~5 modules)   |       543ms ± 41ms |  59ms ± 7ms (**9x**) | 29ms ± 5ms (**19x**) |
+| Medium (~20 modules) |       499ms ± 12ms | 49ms ± 8ms (**10x**) | 25ms ± 5ms (**20x**) |
+| Large (~50+ modules) |       537ms ± 31ms |  57ms ± 8ms (**9x**) | 30ms ± 4ms (**18x**) |
+| Heavy dependencies   |      630ms ± 105ms | 55ms ± 5ms (**11x**) | 32ms ± 2ms (**20x**) |
+
+### Memory Usage (Peak Heap)
+
+| Fixture              | @temporalio/worker | esbuild (Node) |      Savings |
+| -------------------- | -----------------: | -------------: | -----------: |
+| Small (~5 modules)   |           52.25 MB |        3.03 MB | **94% less** |
+| Medium (~20 modules) |           51.71 MB |        3.08 MB | **94% less** |
+| Large (~50+ modules) |           54.02 MB |        3.49 MB | **94% less** |
+| Heavy dependencies   |           52.04 MB |        2.82 MB | **95% less** |
+
+To use the Bun bundler backend:
+
+```typescript
+const bundle = await bundleWorkflowCode({
+  workflowsPath: './src/workflows.ts',
+  bundler: 'bun', // explicitly use Bun.build
+});
+```
+
+Run benchmarks yourself:
+
+```bash
+# Quick benchmark (small fixture only)
+bun run benchmark:quick
+
+# Full benchmark suite (10 runs, 3 warmup)
+bun run benchmark:full
+
+# Custom options
+bun run benchmark -r 15 -w 5 -o markdown --file BENCHMARK.md
+
+# Disable outlier filtering
+bun run benchmark --no-filter-outliers
+
+# Compare esbuild vs Bun.build (requires Bun runtime)
+bun run benchmark:bun
+```
+
+The benchmark suite includes statistical analysis with 95% confidence intervals, outlier detection ([IQR method](https://en.wikipedia.org/wiki/Interquartile_range)), and significance testing ([Welch's t-test](https://en.wikipedia.org/wiki/Welch%27s_t-test)).
 
 ## Build Tool Integration
 
@@ -510,551 +502,126 @@ The plugin caches bundles by path to avoid redundant builds.
 
 ## API Reference
 
-### WorkflowCodeBundler
-
-Class-based API for more control over the bundling lifecycle. Supports reusable build contexts and watch mode.
-
-```typescript
-import { WorkflowCodeBundler } from 'build-temporal-workflow';
-
-const bundler = new WorkflowCodeBundler({
-  workflowsPath: './src/workflows.ts',
-});
-
-// One-off build
-const bundle = await bundler.createBundle();
-
-// Reusable context for repeated builds (e.g., test suites)
-const ctx = await bundler.createContext();
-const bundle1 = await ctx.rebuild();
-// ... modify workflow files ...
-const bundle2 = await ctx.rebuild(); // Much faster
-await ctx.dispose();
-
-// Watch mode
-const handle = await bundler.watch((bundle, error) => {
-  if (error) console.error(error);
-  else console.log('Rebuilt:', bundle.code.length, 'bytes');
-});
-await handle.stop();
-```
-
-### bundleWorkflowCode(options)
-
-Bundle workflow code for use with Temporal Worker.
-
-```typescript
-import { bundleWorkflowCode } from 'build-temporal-workflow';
-
-const bundle = await bundleWorkflowCode({
-  // Required: Path to workflows file or directory
-  workflowsPath: './src/workflows.ts',
-
-  // Optional: Build mode (default: 'development')
-  mode: 'production',
-
-  // Optional: Source map mode (default: 'inline')
-  sourceMap: 'inline' | 'external' | 'none',
-
-  // Optional: Modules to exclude from bundle
-  ignoreModules: ['some-node-only-lib'],
-
-  // Optional: Workflow interceptor modules
-  workflowInterceptorModules: ['./src/interceptors.ts'],
-
-  // Optional: Custom payload converter
-  payloadConverterPath: './src/payload-converter.ts',
-
-  // Optional: Custom failure converter
-  failureConverterPath: './src/failure-converter.ts',
-
-  // Optional: Logger for build output
-  logger: createConsoleLogger(),
-
-  // Optional: Include metadata in bundle (default: true)
-  report: true,
-
-  // Optional: Input flavor for cross-runtime support
-  inputFlavor: 'node' | 'deno' | 'bun' | 'auto',
-
-  // Optional: Bundler backend (default: 'auto')
-  bundler: 'esbuild' | 'bun' | 'auto',
-
-  // Optional: Additional esbuild options
-  buildOptions: {
-    define: { 'process.env.DEBUG': 'true' },
-  },
-});
-```
-
-Returns:
-
-```typescript
-interface WorkflowBundle {
-  code: string; // Bundled JavaScript code
-  sourceMap?: string; // Source map (if external)
-  metadata?: {
-    createdAt: string;
-    mode: 'development' | 'production';
-    entryHash: string;
-    bundlerVersion: string;
-    temporalSdkVersion: string;
-    warnings?: string[];
-  };
-}
-```
-
-### createConsoleLogger()
-
-Create a console-based logger for development. Compatible with the `Logger` option.
-
-```typescript
-import { createConsoleLogger, bundleWorkflowCode } from 'build-temporal-workflow';
-
-const bundle = await bundleWorkflowCode({
-  workflowsPath: './src/workflows.ts',
-  logger: createConsoleLogger(),
-});
-```
-
-### watchWorkflowCode(options, callback)
-
-Watch for changes and rebuild automatically.
-
-```typescript
-import { watchWorkflowCode } from 'build-temporal-workflow';
-
-const handle = await watchWorkflowCode(
-  { workflowsPath: './src/workflows' },
-  (bundle, error) => {
-    if (error) {
-      console.error('Build failed:', error);
-    } else {
-      // bundle is the new WorkflowBundle
-    }
-  },
-);
-
-// Stop watching
-await handle.stop();
-```
-
-### getCachedBundle(options)
-
-Get a bundle, using cache when possible. Cache is invalidated when workflow files change.
-
-```typescript
-import {
-  getCachedBundle,
-  clearBundleCache,
-  getBundleCacheStats,
-} from 'build-temporal-workflow';
-
-const bundle = await getCachedBundle({
-  workflowsPath: './src/workflows',
-  forceRebuild: false, // Set true to bypass cache
-  useContentHash: true, // Content-based invalidation (recommended for CI)
-});
-
-// Clear all cached bundles
-clearBundleCache();
-
-// Inspect cache state
-const stats = getBundleCacheStats();
-console.log(`${stats.size} bundles cached`);
-```
-
-### preloadBundles(optionsList)
-
-Preload multiple bundles into the cache concurrently. Useful for warming up the cache before running tests.
-
-```typescript
-import { preloadBundles } from 'build-temporal-workflow';
-
-await preloadBundles([
-  { workflowsPath: './src/workflows/order.ts' },
-  { workflowsPath: './src/workflows/user.ts' },
-  { workflowsPath: './src/workflows/notification.ts' },
-]);
-```
-
-### loadBundle(options)
-
-Load a pre-built bundle from disk.
-
-```typescript
-import { loadBundle } from 'build-temporal-workflow';
-
-const { bundle, warnings, path } = loadBundle({
-  path: './dist/workflow-bundle.js',
-  sourceMapPath: './dist/workflow-bundle.js.map', // Optional
-  validate: true, // Validate structure (default: true)
-  expectedSdkVersion: '1.14.0', // Warn if different
-});
-```
-
-### analyzeReplaySafety(options)
-
-Detect non-deterministic patterns in workflow code.
-
-```typescript
-import { analyzeReplaySafety, formatReplayViolations } from 'build-temporal-workflow';
-
-const result = await analyzeReplaySafety({
-  workflowsPath: './src/workflows',
-
-  // Optional: Ignore specific patterns
-  ignorePatterns: ['Math.random'], // Allow Math.random
-
-  // Optional: Ignore specific files
-  ignoreFiles: ['**/*.test.ts'],
-
-  // Optional: Custom patterns to check
-  additionalPatterns: [
-    {
-      pattern: /\beval\s*\(/g,
-      name: 'eval()',
-      reason: 'eval() is non-deterministic',
-      suggestion: 'Avoid eval in workflows',
-      severity: 'error',
-    },
-  ],
-});
-
-// Format for display
-console.log(formatReplayViolations(result.violations));
-
-// Analyze a single file
-const fileResult = analyzeFileReplaySafety(
-  './src/workflows/order.ts',
-  REPLAY_UNSAFE_PATTERNS,
-);
-
-// Access the built-in pattern list
-import { REPLAY_UNSAFE_PATTERNS } from 'build-temporal-workflow';
-console.log(REPLAY_UNSAFE_PATTERNS.map((p) => p.name));
-```
-
-### generateManifest(options)
-
-Generate a manifest of workflow exports.
-
-```typescript
-import {
-  generateManifest,
-  compareManifests,
-  serializeManifest,
-  parseManifest,
-} from 'build-temporal-workflow';
-
-const manifest = generateManifest({
-  workflowsPath: './src/workflows',
-  bundleCode: bundle.code,
-  includeSourceHashes: true,
-});
-
-// Compare two manifests
-const diff = compareManifests(oldManifest, newManifest);
-
-// Serialize/deserialize for storage
-const json = serializeManifest(manifest);
-const restored = parseManifest(json);
-```
-
-### validateBundle(bundle, options)
-
-Validate a bundle is properly structured.
-
-```typescript
-import {
-  validateBundle,
-  validateBundleDetailed,
-  validateBundleStructure,
-} from 'build-temporal-workflow';
-
-// Quick structure check
-const structureResult = validateBundleStructure(bundle.code);
-if (!structureResult.valid) {
-  throw new Error(structureResult.error);
-}
-
-// Full validation with version check
-const result = validateBundle(bundle, {
-  workerVersion: '1.14.0',
-});
-
-// Detailed validation with separate errors and warnings
-const detailed = validateBundleDetailed(bundle, {
-  expectedSdkVersion: '1.14.0',
-  strictVersionCheck: true,
-  validateStructure: true,
-});
-
-if (!detailed.valid) {
-  console.error('Errors:', detailed.errors);
-}
-if (detailed.warnings.length > 0) {
-  console.warn('Warnings:', detailed.warnings);
-}
-console.log('Metadata:', detailed.metadata);
-```
-
-### WorkflowBundleError
-
-Structured error class thrown when bundling fails. Contains a machine-readable `code` and contextual information.
-
-```typescript
-import { WorkflowBundleError } from 'build-temporal-workflow';
-
-try {
-  await bundleWorkflowCode({ workflowsPath: './src/workflows.ts' });
-} catch (error) {
-  if (error instanceof WorkflowBundleError) {
-    console.log(error.code); // e.g. 'FORBIDDEN_MODULES', 'DYNAMIC_IMPORT'
-    console.log(error.context); // { modules, details, hint, dependencyChain, violations }
-  }
-}
-```
-
-Error codes: `FORBIDDEN_MODULES`, `DYNAMIC_IMPORT`, `RESOLUTION_FAILED`, `IGNORED_MODULE_USED`, `CONFIG_INVALID`, `BUILD_FAILED`, `ENTRYPOINT_NOT_FOUND`.
-
-### Advanced: Determinism Policy
-
-Low-level functions for inspecting and working with the module determinism policy.
-
-```typescript
-import {
-  loadDeterminismPolicy,
-  moduleMatches,
-  normalizeSpecifier,
-  isForbidden,
-  isAllowedBuiltin,
-  getModuleOverridePath,
-  ALLOWED_BUILTINS,
-} from 'build-temporal-workflow';
-
-const policy = loadDeterminismPolicy();
-
-// Check if a module is forbidden
-isForbidden('fs', policy); // true
-isForbidden('lodash', policy); // false
-
-// Check if a module has a Temporal stub
-isAllowedBuiltin('assert'); // true
-
-// Normalize specifiers (strips node: prefix, etc.)
-normalizeSpecifier('node:fs'); // 'fs'
-
-// Check if a user module matches any in a list
-moduleMatches('node:fs', ['fs']); // true
-
-// Get path to the Temporal stub for an allowed builtin
-getModuleOverridePath('assert'); // path to stub
-
-// Built-in allowed modules
-console.log(ALLOWED_BUILTINS); // ['assert', 'url', 'util']
-```
-
-### Advanced: esbuild Plugin
-
-Create the Temporal esbuild plugin directly for custom build pipelines.
-
-```typescript
-import { createTemporalPlugin } from 'build-temporal-workflow';
-
-const { plugin, state } = createTemporalPlugin({
-  ignoreModules: ['dns'],
-  policy: loadDeterminismPolicy(),
-});
-
-// Use `plugin` in your own esbuild.build() call
-// After build, inspect `state.foundProblematicModules` and `state.dynamicImports`
-```
-
-### Advanced: Dependency Chain Analysis
-
-Analyze how forbidden modules are reached from the entrypoint using esbuild metafile data.
-
-```typescript
-import {
-  findDependencyChain,
-  findAllDependencyChains,
-  formatDependencyChain,
-  summarizeDependencyChain,
-} from 'build-temporal-workflow';
-
-// Find the import chain to a specific module
-const chain = findDependencyChain(metafile, problematicModules, 'fs');
-
-// Find chains for all problematic modules
-const allChains = findAllDependencyChains(metafile, problematicModules);
-
-// Format for display
-const formatted = formatDependencyChain(chain); // ['workflows.ts', '→ helper.ts', '→ fs']
-const summary = summarizeDependencyChain(chain); // 'workflows.ts → helper.ts → fs'
-```
-
-### Advanced: File Loader Plugins
-
-Opt-in plugins for importing static files. Available as submodule exports for tree-shaking.
-
-```typescript
-// Import all loaders
-import {
-  textLoader,
-  markdownLoader,
-  tomlLoader,
-  yamlLoader,
-} from 'build-temporal-workflow/plugins';
-
-// Or import individually (better for tree-shaking)
-import { textLoader } from 'build-temporal-workflow/plugins/text';
-import { markdownLoader } from 'build-temporal-workflow/plugins/markdown';
-import { tomlLoader } from 'build-temporal-workflow/plugins/toml';
-import { yamlLoader } from 'build-temporal-workflow/plugins/yaml';
-
-// Use with bundleWorkflowCode
-const bundle = await bundleWorkflowCode({
-  workflowsPath: './src/workflows.ts',
-  buildOptions: {
-    plugins: [textLoader(), tomlLoader(), yamlLoader()],
-  },
-});
-
-// Or use directly with esbuild
-import * as esbuild from 'esbuild';
-
-await esbuild.build({
-  entryPoints: ['./src/index.ts'],
-  bundle: true,
-  plugins: [textLoader(), tomlLoader(), yamlLoader()],
-});
-
-// Customize extensions
-textLoader({ extensions: ['.txt', '.md', '.text'] });
-tomlLoader({ extensions: ['.toml', '.tml'] });
-yamlLoader({ extensions: ['.yaml', '.yml', '.eyaml'] });
-```
-
-Works with both esbuild and Bun.build backends.
-
-### Advanced: Cross-Runtime Utilities
-
-Utilities for working with Deno and Bun import conventions.
-
-```typescript
-import {
-  detectInputFlavor,
-  resolveCrossRuntimeConfig,
-  createCrossRuntimePlugin,
-  parseDenoConfig,
-  parseImportMap,
-  loadImportMap,
-  isNpmSpecifier,
-  parseNpmSpecifier,
-  isUrlImport,
-  isUrlPinned,
-  detectForbiddenRuntimeApis,
-} from 'build-temporal-workflow';
-
-// Auto-detect runtime flavor from config files
-const flavor = detectInputFlavor('./src/workflows.ts'); // 'node' | 'deno' | 'bun'
-
-// Resolve full cross-runtime config
-const config = resolveCrossRuntimeConfig('./src/workflows.ts', 'auto');
-
-// Create an esbuild plugin for cross-runtime resolution
-const plugin = createCrossRuntimePlugin(config, './src/workflows.ts');
-
-// Parse Deno config and import maps
-const denoConfig = parseDenoConfig('./deno.json');
-const importMap = parseImportMap('./import_map.json');
-const resolvedMap = loadImportMap('./src/workflows.ts');
-
-// Work with npm: specifiers
-isNpmSpecifier('npm:lodash@4.17.21'); // true
-parseNpmSpecifier('npm:lodash@4.17.21'); // { name: 'lodash', version: '4.17.21', subpath: undefined }
-
-// Detect URL imports and pinning
-isUrlImport('https://deno.land/std/path/mod.ts'); // true
-isUrlPinned('https://deno.land/std@0.200.0/path/mod.ts'); // true
-
-// Detect forbidden runtime-specific APIs in source
-const violations = detectForbiddenRuntimeApis(sourceCode, 'deno');
-```
+### Primary APIs
+
+| Function                               | Description                                        |
+| -------------------------------------- | -------------------------------------------------- |
+| `bundleWorkflowCode(options)`          | Bundle workflow code for use with Temporal Worker  |
+| `watchWorkflowCode(options, callback)` | Watch for changes and rebuild automatically        |
+| `getCachedBundle(options)`             | Get a bundle, using in-memory cache when possible  |
+| `loadBundle(options)`                  | Load a pre-built bundle from disk                  |
+| `analyzeReplaySafety(options)`         | Detect non-deterministic patterns in workflow code |
+| `validateBundle(bundle, options)`      | Validate a bundle's structure and version          |
+| `generateManifest(options)`            | Generate a manifest of workflow exports            |
+| `WorkflowCodeBundler`                  | Class-based API with build contexts and watch mode |
+| `createConsoleLogger()`                | Create a console-based logger for development      |
+
+### Multi-Queue & Activity Bundling
+
+| Function                           | Description                               | Docs                                                        |
+| ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| `bundleMultipleWorkflows(options)` | Bundle workflows for multiple task queues | [Multi-Queue Builds](./documentation/multi-queue-builds.md) |
+| `bundleActivityCode(options)`      | Bundle activity implementations           | [Multi-Queue Builds](./documentation/multi-queue-builds.md) |
+| `watchTemporalCode(options)`       | Coordinated watch across queues           | [Multi-Queue Builds](./documentation/multi-queue-builds.md) |
+
+### Analysis & Validation
+
+| Function                                       | Description                          | Docs                                                            |
+| ---------------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
+| `analyzeSize(bundle, budget?)`                 | Bundle size analysis with budgets    | [Bundle Analysis](./documentation/bundle-analysis.md)           |
+| `compareBundle(prev, current)`                 | Compare two bundles for changes      | [Bundle Analysis](./documentation/bundle-analysis.md)           |
+| `mapViolationsToSource(violations, sourceMap)` | Map violations to original source    | [Determinism Checking](./documentation/determinism-checking.md) |
+| `analyzeHistorySize(code)`                     | Detect unbounded history growth      | [Determinism Checking](./documentation/determinism-checking.md) |
+| `validateWorkflowExports(path)`                | Validate workflow function exports   | [Workflow Validation](./documentation/workflow-validation.md)   |
+| `validateActivityTypes(path)`                  | Validate activity type serialization | [Workflow Validation](./documentation/workflow-validation.md)   |
+| `checkWorkflowBoundaries(path)`                | Enforce package boundaries           | [Workflow Validation](./documentation/workflow-validation.md)   |
+
+### CI/CD & Signing
+
+| Function                            | Description                | Docs                                                      |
+| ----------------------------------- | -------------------------- | --------------------------------------------------------- |
+| `generateCIReport(bundle)`          | CI-friendly build report   | [CI/CD Integration](./documentation/ci-cd-integration.md) |
+| `formatGitHubAnnotations(report)`   | GitHub Actions annotations | [CI/CD Integration](./documentation/ci-cd-integration.md) |
+| `verifyDeterministicBuild(options)` | Verify reproducible builds | [CI/CD Integration](./documentation/ci-cd-integration.md) |
+| `signBundle(bundle, privateKey)`    | Sign a bundle with Ed25519 | [Bundle Signing](./documentation/bundle-signing.md)       |
+| `verifyBundle(signedBundle)`        | Verify a signed bundle     | [Bundle Signing](./documentation/bundle-signing.md)       |
+| `generateSigningKeyPair()`          | Generate Ed25519 key pair  | [Bundle Signing](./documentation/bundle-signing.md)       |
+
+### Plugins & TypeScript
+
+| Function                                   | Description                   | Docs                                                                |
+| ------------------------------------------ | ----------------------------- | ------------------------------------------------------------------- |
+| `createPlugin(name, configure, priority?)` | Create a bundler plugin       | [Plugin System](./documentation/plugin-system.md)                   |
+| `mergePlugins(...arrays)`                  | Merge and deduplicate plugins | [Plugin System](./documentation/plugin-system.md)                   |
+| `typeCheckWorkflows(path, options?)`       | TypeScript type checking      | [TypeScript Integration](./documentation/typescript-integration.md) |
+| `generateWorkflowDeclarations(path, out)`  | Generate `.d.ts` files        | [TypeScript Integration](./documentation/typescript-integration.md) |
+| `bundleForTesting(options)`                | Test bundle with mocks        | [Testing](./documentation/testing.md)                               |
+| `checkSdkCompatibility(version?)`          | Check SDK version compat      | [SDK Compatibility](./documentation/sdk-compatibility.md)           |
 
 ## CLI
 
-The package includes a CLI for building and analyzing bundles.
+```
+bundle-temporal-workflow <command> [options]
+```
 
-### build
+### Commands
 
-Bundle workflow code:
+| Command          | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| `build <path>`   | Bundle workflow code for use with Temporal Worker |
+| `analyze <path>` | Analyze bundle composition and dependencies       |
+| `check <path>`   | Build and validate against size budgets           |
+| `verify <path>`  | Verify build determinism (reproducible builds)    |
+| `sign <path>`    | Sign a bundle with Ed25519                        |
+| `keygen`         | Generate a new Ed25519 signing key pair           |
+| `doctor`         | Validate environment and SDK compatibility        |
+
+### Build Options
+
+| Flag                      | Description                                   |
+| ------------------------- | --------------------------------------------- |
+| `-o, --output <file>`     | Output file path (default: stdout)            |
+| `-s, --source-map <mode>` | Source map mode: `inline`, `external`, `none` |
+| `-m, --mode <mode>`       | Build mode: `development`, `production`       |
+| `-i, --ignore <module>`   | Ignore a module (can be repeated)             |
+| `-w, --watch`             | Watch for changes and rebuild                 |
+| `--interceptor <path>`    | Add interceptor module (can be repeated)      |
+| `--payload-converter <p>` | Path to custom payload converter              |
+| `--failure-converter <p>` | Path to custom failure converter              |
+| `--json`                  | Output result as JSON                         |
+| `--budget <size>`         | Size budget (e.g., `500KB`, `1MB`)            |
+| `--ci`                    | CI-friendly output mode                       |
+| `--strict`                | Strict validation (fail on warnings)          |
+| `--private-key <path>`    | Ed25519 private key for signing               |
+| `--public-key <path>`     | Ed25519 public key for verification           |
+| `-v, --verbose`           | Enable verbose logging                        |
+
+### Examples
 
 ```bash
-# Write to file
+# Bundle workflows
 bundle-temporal-workflow build ./src/workflows.ts -o ./dist/bundle.js
 
-# With options
-bundle-temporal-workflow build ./src/workflows.ts \
-  -o ./dist/bundle.js \
-  --mode production \
-  --source-map external \
-  --ignore lodash \
-  --verbose
+# Production build with external source map
+bundle-temporal-workflow build ./src/workflows.ts -o ./dist/bundle.js --mode production --source-map external
 
-# Watch mode
-bundle-temporal-workflow build ./src/workflows.ts -o ./dist/bundle.js --watch
-
-# Output as JSON
-bundle-temporal-workflow build ./src/workflows.ts --json
-```
-
-### analyze
-
-Analyze bundle composition:
-
-```bash
+# Analyze bundle composition
 bundle-temporal-workflow analyze ./src/workflows.ts
 
-# Output:
-# Bundle Analysis
-#
-# Summary
-#   Total size: 336.18 KB
-#   Module count: 58
-#
-# Dependencies (4)
-#   • @temporalio/common
-#   • @temporalio/workflow
-#   • long
-#   • ms
-#
-# Largest Modules
-#   ████████████████████ 49.80 KB (14.8%) long/umd/index.js
-#   ██████████████░░░░░░ 35.20 KB (10.5%) @temporalio/workflow/...
-#   ...
-#
-# ✓ No forbidden modules found
-```
+# Check against a size budget
+bundle-temporal-workflow check ./src/workflows.ts --budget 500KB --strict
 
-### doctor
+# Verify reproducible builds
+bundle-temporal-workflow verify ./src/workflows.ts
 
-Check environment and configuration:
+# Generate signing keys
+bundle-temporal-workflow keygen
 
-```bash
+# Sign a bundle
+bundle-temporal-workflow sign ./dist/bundle.js --private-key ./keys/private.key
+
+# Check environment
 bundle-temporal-workflow doctor
-
-# Output:
-# ✓ Bundler Version: bundle-temporal-workflow v0.0.1
-# ✓ Temporal SDK: @temporalio/workflow v1.14.1
-# ✓ Temporal Worker: @temporalio/worker is installed
-# ✓ Module Overrides: Temporal module stubs are available
-# ✓ esbuild: esbuild v0.27.2
-# ✓ Node.js: Node.js v24.3.0
-# ✓ Bun Runtime: Bun v1.3.2
-#
-# All checks passed
 ```
 
 ## Configuration
@@ -1099,9 +666,9 @@ These options are enforced and cannot be overridden to preserve workflow type in
 
 Workflow code runs in a sandbox without access to Node.js APIs. If you're importing a module that uses Node APIs:
 
-1. **Move to Activities** — Network calls, file I/O, and other side effects should be in Activities, not Workflows
-2. **Use `ignoreModules`** — If a module is only used for types or is tree-shaken away, add it to `ignoreModules`
-3. **Check the dependency chain** — The error message shows how the forbidden module was imported
+1. **Move to Activities**—Network calls, file I/O, and other side effects should be in Activities, not Workflows
+2. **Use `ignoreModules`**—If a module is only used for types or is tree-shaken away, add it to `ignoreModules`
+3. **Check the dependency chain**—The error message shows how the forbidden module was imported
 
 ### "Dynamic import found"
 
@@ -1136,4 +703,4 @@ bun run benchmark
 
 ## License
 
-MIT
+[MIT](./LICENSE)

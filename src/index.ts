@@ -50,17 +50,40 @@ export { WorkflowBundleError } from './errors';
 
 // Types
 export type {
+  ActivityBundle,
+  ActivityBundleOptions,
+  BuildMetadata,
+  BundleComparison,
   BundleContext,
   BundleMetadata,
   BundleOptions,
   BundlerPlugin,
+  BundleSizeBudget,
+  ContentHashOptions,
   CrossRuntimeConfig,
   DeterminismPolicy,
+  DiskCacheOptions,
+  ExportValidationResult,
+  ExtendedBundlerPlugin,
   ImportMap,
   InputFlavor,
+  InstrumentationOptions,
   Logger,
+  ModuleSizeInfo,
+  MultiBundleOptions,
+  PackageBoundaries,
+  QueueConfig,
+  SdkCompatibility,
+  SignedBundle,
+  SizeAnalysisResult,
+  TestBundleOptions,
+  TypeCheckOptions,
+  TypeValidationResult,
   UrlImportCache,
+  ValidationOptions,
   ValidationResult,
+  WatchCoordinatorOptions,
+  WatchOptions,
   WorkflowBundle,
   WorkflowBundleErrorCode,
   WorkflowBundleErrorContext,
@@ -144,3 +167,174 @@ export {
   parseTsconfigPaths,
   resolvePathAlias,
 } from './tsconfig-paths';
+
+// ============================================================
+// Phase 1: Core Infrastructure
+// ============================================================
+
+// Content hashing
+export { computeBundleContentHash, hashFileContent } from './content-hash';
+
+// Disk cache
+export { createDiskCache, DiskCache } from './disk-cache';
+
+// ============================================================
+// Phase 2: Multi-Workflow Orchestration
+// ============================================================
+
+// Multi-bundle
+export { bundleMultipleWorkflows, createMultiBundlers } from './multi-bundle';
+
+// Activity bundling
+export { bundleActivityCode } from './activity-bundler';
+
+// Coordinated watch mode
+export type { CoordinatedWatchHandle } from './watch-coordinator';
+export { watchTemporalCode } from './watch-coordinator';
+
+// ============================================================
+// Phase 3: Bundle Size Analysis
+// ============================================================
+
+// Size analysis
+export { analyzeSize, formatBytes, parseSize } from './size-analysis';
+
+// Bundle comparison
+export { compareBundle, formatComparison } from './bundle-comparison';
+
+// ============================================================
+// Phase 4: Enhanced Determinism Checking
+// ============================================================
+
+// Violation mapping
+export type { MappedViolation } from './violation-mapper';
+export { formatMappedViolations, mapViolationsToSource } from './violation-mapper';
+
+// Alternatives
+export type { Alternative } from './alternatives';
+export {
+  FORBIDDEN_ALTERNATIVES,
+  formatAlternative,
+  getAlternative,
+  listAlternatives,
+} from './alternatives';
+
+// History analysis
+export type { HistoryAnalysisResult, HistoryWarning } from './history-analysis';
+export { analyzeFileHistorySize, analyzeHistorySize } from './history-analysis';
+
+// ============================================================
+// Phase 5: Workflow Validation
+// ============================================================
+
+// Export validation
+export {
+  validateWorkflowExports,
+  validateWorkflowExportsFromSource,
+} from './export-validation';
+
+// Activity type validation
+export { validateActivityTypes, validateActivityTypesFromSource } from './activity-types';
+
+// Boundary enforcement
+export type { BoundaryCheckResult, BoundaryViolation } from './boundary-enforcement';
+export {
+  checkActivityBoundaries,
+  checkBoundariesFromSource,
+  checkWorkflowBoundaries,
+  DEFAULT_BOUNDARIES,
+} from './boundary-enforcement';
+
+// ============================================================
+// Phase 6: Source Maps & CI/CD
+// ============================================================
+
+// Source map utilities
+export type {
+  SourceMapRemapOptions,
+  SourceMapUploadData,
+  SourceMapUploadOptions,
+} from './sourcemap-utils';
+export {
+  remapSourceMapFile,
+  remapSourceMapPaths,
+  uploadSourceMap,
+} from './sourcemap-utils';
+
+// CI output
+export type { CIReport } from './ci-output';
+export {
+  formatCIReportText,
+  formatGitHubAnnotations,
+  generateCIReport,
+} from './ci-output';
+
+// Determinism verification
+export type { DeterminismVerifyResult } from './determinism-verify';
+export { verifyDeterministicBuild } from './determinism-verify';
+
+// ============================================================
+// Phase 7: Plugin System Enhancements
+// ============================================================
+
+// Plugin utilities
+export type { ComposedPlugins } from './plugin-utils';
+export {
+  composePlugins,
+  createEsbuildPluginAdapter,
+  createPlugin,
+  mergePlugins,
+  sortPluginsByPriority,
+} from './plugin-utils';
+
+// Tree shaking
+export type { PreserveExportsOptions } from './tree-shaking';
+export { analyzeRequiredExports, createPreserveExportsPlugin } from './tree-shaking';
+
+// ============================================================
+// Phase 8: TypeScript Integration
+// ============================================================
+
+// Type checking
+export type { TypeCheckDiagnostic, TypeCheckResult } from './typescript-check';
+export { typeCheckWorkflows } from './typescript-check';
+
+// Declaration generation
+export {
+  generateDeclarationContent,
+  generateWorkflowDeclarations,
+} from './dts-generator';
+
+// ============================================================
+// Phase 9: SDK Compatibility
+// ============================================================
+
+// SDK compatibility
+export { checkSdkCompatibility, formatCompatibilityInfo } from './sdk-compat';
+
+// Instrumentation
+export {
+  createInstrumentationPlugin,
+  generateActivityTracing,
+  generateWorkflowTracing,
+} from './instrumentation';
+
+// ============================================================
+// Phase 10: Watch Mode Improvements
+// ============================================================
+
+// Test mode bundling
+export { bundleForTesting } from './test-mode';
+
+// ============================================================
+// Phase 11: Bundle Signing
+// ============================================================
+
+// Signing
+export type { SigningKeyPair } from './signing';
+export {
+  generateSigningKeyPair,
+  signBundle,
+  verifyBundle,
+  verifyBundleWithKey,
+} from './signing';

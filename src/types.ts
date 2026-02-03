@@ -193,6 +193,11 @@ export interface BundleMetadata {
    * Build warnings
    */
   warnings?: string[] | undefined;
+
+  /**
+   * Extended build metadata (git commit, CI, runtime version, etc.)
+   */
+  buildMetadata?: BuildMetadata | undefined;
 }
 
 /**
@@ -474,4 +479,597 @@ export interface WorkflowManifest {
    * Path to the workflow source file.
    */
   sourcePath?: string;
+}
+
+// ============================================================
+// Phase 1: Core Infrastructure
+// ============================================================
+
+/**
+ * Options for the persistent disk cache.
+ */
+export interface DiskCacheOptions {
+  /**
+   * Directory for storing cached bundles.
+   * Default: node_modules/.cache/temporal-bundler
+   */
+  cacheDir?: string;
+
+  /**
+   * Maximum age of cache entries in milliseconds.
+   * Default: 7 days (604800000)
+   */
+  maxAge?: number;
+
+  /**
+   * Maximum total cache size in bytes.
+   * Default: 100MB (104857600)
+   */
+  maxSize?: number;
+}
+
+/**
+ * Options for computing a content hash of all bundle inputs.
+ */
+export interface ContentHashOptions {
+  /**
+   * Whether to include node_modules in the hash.
+   * Default: false
+   */
+  includeNodeModules?: boolean;
+
+  /**
+   * File extensions to include in the hash.
+   * Default: ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']
+   */
+  extensions?: string[];
+}
+
+/**
+ * Build metadata embedded in the bundle for tracing and debugging.
+ */
+export interface BuildMetadata {
+  /**
+   * Git commit hash (if available).
+   */
+  gitCommit?: string;
+
+  /**
+   * Git branch name (if available).
+   */
+  gitBranch?: string;
+
+  /**
+   * When the build was performed (ISO 8601).
+   */
+  buildTime: string;
+
+  /**
+   * The CI environment name (e.g., 'github-actions', 'gitlab-ci').
+   */
+  ci?: string;
+
+  /**
+   * The Node.js/Bun version used for the build.
+   */
+  runtimeVersion: string;
+
+  /**
+   * Content hash of all input files.
+   */
+  contentHash?: string;
+}
+
+// ============================================================
+// Phase 2: Multi-Workflow Orchestration
+// ============================================================
+
+/**
+ * Configuration for a single task queue's workflow bundle.
+ */
+export interface QueueConfig {
+  /**
+   * Name of the task queue.
+   */
+  name: string;
+
+  /**
+   * Path to workflow source file or directory.
+   */
+  workflowsPath: string;
+
+  /**
+   * Path to activities source file or directory (optional).
+   */
+  activitiesPath?: string;
+}
+
+/**
+ * Options for bundling multiple workflows across task queues.
+ */
+export interface MultiBundleOptions {
+  /**
+   * List of queue configurations to bundle.
+   */
+  queues: QueueConfig[];
+
+  /**
+   * Shared configuration applied to all queues.
+   */
+  shared?: {
+    tsconfigPath?: string;
+    plugins?: BundlerPlugin[];
+    mode?: 'development' | 'production';
+    sourceMap?: 'inline' | 'external' | 'none';
+    ignoreModules?: string[];
+    logger?: Logger;
+  };
+}
+
+/**
+ * Options for bundling activity code.
+ */
+export interface ActivityBundleOptions {
+  /**
+   * Path to activities source file or directory.
+   */
+  activitiesPath: string;
+
+  /**
+   * Output format for the activity bundle.
+   * Default: 'esm'
+   */
+  format?: 'esm' | 'cjs';
+
+  /**
+   * Whether to minify the activity bundle.
+   * Default: false
+   */
+  minify?: boolean;
+
+  /**
+   * External packages to exclude from the bundle.
+   */
+  external?: string[];
+
+  /**
+   * Optional logger.
+   */
+  logger?: Logger;
+}
+
+/**
+ * Result of bundling activity code.
+ */
+export interface ActivityBundle {
+  /**
+   * The bundled JavaScript code.
+   */
+  code: string;
+
+  /**
+   * Source map (if generated).
+   */
+  sourceMap?: string;
+
+  /**
+   * List of exported activity function names.
+   */
+  activityNames: string[];
+}
+
+/**
+ * Options for coordinated watch mode across workflows and activities.
+ */
+export interface WatchCoordinatorOptions {
+  /**
+   * Queue configurations to watch.
+   */
+  queues: QueueConfig[];
+
+  /**
+   * Shared configuration.
+   */
+  shared?: MultiBundleOptions['shared'];
+
+  /**
+   * Debounce interval in milliseconds.
+   * Default: 100
+   */
+  debounce?: number;
+
+  /**
+   * Callback invoked when any bundle is rebuilt.
+   */
+  onChange: (
+    queueName: string,
+    type: 'workflow' | 'activity',
+    bundle: WorkflowBundle | ActivityBundle | null,
+    error?: Error,
+  ) => void;
+}
+
+// ============================================================
+// Phase 3: Bundle Size Analysis
+// ============================================================
+
+/**
+ * Size budget constraints for bundle validation.
+ */
+export interface BundleSizeBudget {
+  /**
+   * Maximum total bundle size in bytes.
+   */
+  total?: number;
+
+  /**
+   * Maximum size per module in bytes.
+   */
+  perModule?: number;
+
+  /**
+   * Warning threshold as a percentage of budget (0-100).
+   * Default: 80
+   */
+  warn?: number;
+
+  /**
+   * Failure threshold as a percentage of budget (0-100).
+   * Default: 100
+   */
+  fail?: number;
+}
+
+/**
+ * Size information for a single module in the bundle.
+ */
+export interface ModuleSizeInfo {
+  /**
+   * Module path.
+   */
+  path: string;
+
+  /**
+   * Size in bytes.
+   */
+  size: number;
+
+  /**
+   * Percentage of total bundle size.
+   */
+  percentage: number;
+
+  /**
+   * Whether this module is from node_modules.
+   */
+  isExternal: boolean;
+}
+
+/**
+ * Result of bundle size analysis.
+ */
+export interface SizeAnalysisResult {
+  /**
+   * Total bundle size in bytes.
+   */
+  totalSize: number;
+
+  /**
+   * Total gzipped size estimate in bytes.
+   */
+  gzipSize: number;
+
+  /**
+   * Number of modules in the bundle.
+   */
+  moduleCount: number;
+
+  /**
+   * Size breakdown by module, sorted by size descending.
+   */
+  modules: ModuleSizeInfo[];
+
+  /**
+   * Top contributors to bundle size.
+   */
+  topContributors: ModuleSizeInfo[];
+
+  /**
+   * Budget check results (if budget was provided).
+   */
+  budgetResult?: {
+    status: 'pass' | 'warn' | 'fail';
+    message: string;
+    overBudget?: number;
+  };
+}
+
+/**
+ * Result of comparing two bundles.
+ */
+export interface BundleComparison {
+  /**
+   * Previous bundle size in bytes.
+   */
+  previousSize: number;
+
+  /**
+   * Current bundle size in bytes.
+   */
+  currentSize: number;
+
+  /**
+   * Size difference in bytes (positive = larger).
+   */
+  delta: number;
+
+  /**
+   * Percentage change.
+   */
+  deltaPercentage: number;
+
+  /**
+   * Modules that were added.
+   */
+  added: ModuleSizeInfo[];
+
+  /**
+   * Modules that were removed.
+   */
+  removed: ModuleSizeInfo[];
+
+  /**
+   * Modules that changed in size.
+   */
+  changed: Array<{
+    path: string;
+    previousSize: number;
+    currentSize: number;
+    delta: number;
+  }>;
+}
+
+// ============================================================
+// Phase 5: Workflow Validation
+// ============================================================
+
+/**
+ * Options for workflow export validation.
+ */
+export interface ValidationOptions {
+  /**
+   * Whether to require workflow functions to have explicit return types.
+   * Default: false
+   */
+  requireReturnTypes?: boolean;
+
+  /**
+   * Whether to validate that all exports are async functions.
+   * Default: true
+   */
+  requireAsync?: boolean;
+
+  /**
+   * Custom patterns for workflow function name validation.
+   */
+  namePattern?: RegExp;
+}
+
+/**
+ * Result of workflow export validation.
+ */
+export interface ExportValidationResult {
+  /**
+   * Whether all exports are valid.
+   */
+  valid: boolean;
+
+  /**
+   * List of export names found.
+   */
+  exports: string[];
+
+  /**
+   * Validation errors.
+   */
+  errors: Array<{
+    exportName: string;
+    message: string;
+  }>;
+
+  /**
+   * Validation warnings.
+   */
+  warnings: Array<{
+    exportName: string;
+    message: string;
+  }>;
+}
+
+/**
+ * Result of activity type validation.
+ */
+export interface TypeValidationResult {
+  /**
+   * Whether all activity types are valid.
+   */
+  valid: boolean;
+
+  /**
+   * List of validated activities.
+   */
+  activities: Array<{
+    name: string;
+    valid: boolean;
+    errors: string[];
+  }>;
+}
+
+/**
+ * Package boundary rules for workflow/activity separation.
+ */
+export interface PackageBoundaries {
+  /**
+   * Packages that can only be used in workflow code.
+   */
+  workflowOnly: string[];
+
+  /**
+   * Packages that can only be used in activity code.
+   */
+  activityOnly: string[];
+
+  /**
+   * Packages that can be used in both workflow and activity code.
+   */
+  shared: string[];
+}
+
+// ============================================================
+// Phase 7: Plugin System Enhancements
+// ============================================================
+
+/**
+ * Extended plugin interface with priority ordering.
+ */
+export interface ExtendedBundlerPlugin extends BundlerPlugin {
+  /**
+   * Priority for plugin ordering. Lower values run first.
+   * Default: 100
+   */
+  priority?: number;
+}
+
+// ============================================================
+// Phase 8: TypeScript Integration
+// ============================================================
+
+/**
+ * Options for TypeScript type checking during build.
+ */
+export interface TypeCheckOptions {
+  /**
+   * Whether to enable type checking.
+   * Default: false
+   */
+  enabled?: boolean;
+
+  /**
+   * Whether to use strict mode.
+   * Default: false
+   */
+  strict?: boolean;
+
+  /**
+   * Whether to enforce workflow-specific type rules.
+   * Default: false
+   */
+  workflowRules?: boolean;
+}
+
+// ============================================================
+// Phase 9: SDK Compatibility
+// ============================================================
+
+/**
+ * SDK version compatibility information.
+ */
+export interface SdkCompatibility {
+  /**
+   * Bundler version.
+   */
+  bundlerVersion: string;
+
+  /**
+   * SDK version used during bundling.
+   */
+  bundleSdkVersion: string;
+
+  /**
+   * SDK version of the worker.
+   */
+  workerSdkVersion: string;
+
+  /**
+   * Whether the versions are compatible.
+   */
+  compatible: boolean;
+
+  /**
+   * Compatibility warnings.
+   */
+  warnings: string[];
+}
+
+/**
+ * Options for development-mode instrumentation.
+ */
+export interface InstrumentationOptions {
+  /**
+   * Whether to trace workflow function calls.
+   * Default: false
+   */
+  traceWorkflowCalls?: boolean;
+
+  /**
+   * Whether to trace activity proxy calls.
+   * Default: false
+   */
+  traceActivityCalls?: boolean;
+
+  /**
+   * Whether to remove instrumentation in production builds.
+   * Default: true
+   */
+  treeShakeInProduction?: boolean;
+}
+
+// ============================================================
+// Phase 10: Watch Mode Improvements
+// ============================================================
+
+/**
+ * Options for watch mode behavior.
+ */
+export interface WatchOptions {
+  /**
+   * Debounce interval in milliseconds.
+   * Default: 100
+   */
+  debounce?: number;
+}
+
+/**
+ * Options for test-specific bundle configuration.
+ */
+export interface TestBundleOptions extends BundleOptions {
+  /**
+   * Module replacements for testing (module path -> mock path).
+   */
+  mocks?: Record<string, string>;
+
+  /**
+   * Whether to allow some non-deterministic patterns in test mode.
+   * Default: false
+   */
+  relaxedDeterminism?: boolean;
+}
+
+// ============================================================
+// Phase 11: Bundle Signing
+// ============================================================
+
+/**
+ * A workflow bundle with an Ed25519 signature.
+ */
+export interface SignedBundle extends WorkflowBundle {
+  /**
+   * Base64-encoded Ed25519 signature.
+   */
+  signature: string;
+
+  /**
+   * Base64-encoded public key for verification.
+   */
+  publicKey: string;
 }
