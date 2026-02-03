@@ -14,6 +14,8 @@ A drop-in replacement for `@temporalio/worker`'s `bundleWorkflowCode` that swaps
 - [Plugin System](./documentation/plugin-system.md)—Plugin composition, priority, export preservation
 - [TypeScript Integration](./documentation/typescript-integration.md)—Type checking, declaration generation, path alias resolution
 - [Bundle Signing](./documentation/bundle-signing.md)—Ed25519 signing, key generation, verification
+- [Tree Shaking](./documentation/tree-shaking.md)—Dead code elimination for dependencies
+- [Ignoring Modules](./documentation/ignore-modules.md)—Excluding modules from the bundle
 - [Testing](./documentation/testing.md)—Test bundle mode, mocks, relaxed determinism
 - [SDK Compatibility](./documentation/sdk-compatibility.md)—Version matrix, instrumentation
 
@@ -26,7 +28,7 @@ The `bundleWorkflowCode` function in `@temporalio/worker` does two things:
 
 That's it. There's no code splitting, no asset pipeline, no HMR, no loader ecosystem to support. It's a straightforward bundling job.
 
-[Webpack](https://webpack.js.org/) is an super-capable tool, but its generality is a liability here. It parses its own configuration schema, initializes a plugin system, builds a module graph through its own resolution algorithm, and runs multiple optimization passes—all for a bundle that _must not be minified_ and _must not be tree-shaken_ as both break workflow determinism.
+[Webpack](https://webpack.js.org/) is an super-capable tool, but its generality is a liability here. It parses its own configuration schema, initializes a plugin system, builds a module graph through its own resolution algorithm, and runs multiple optimization passes—all for a bundle that _must not be minified_ to preserve workflow determinism.
 
 [esbuild](https://esbuild.github.io/) does the same job _way faster_ because it was designed from the ground up for speed: single-pass architecture, Go's compile-time optimizations, and zero configuration overhead. This library wraps esbuild with the same plugin hooks that Temporal needs—forbidden module detection, determinism policy enforcement, module stub injection—and produces output that is structurally identical to what Webpack generates.
 
@@ -643,6 +645,7 @@ bundle-temporal-workflow doctor
 | `denoConfigPath`             | `string`                              | -               | Path to deno.json                   |
 | `importMapPath`              | `string`                              | -               | Path to import map                  |
 | `tsconfigPath`               | `string \| boolean`                   | -               | Path to tsconfig.json for aliases   |
+| `treeShaking`                | `boolean`                             | `true`          | Eliminate dead code in dependencies |
 | `bundler`                    | `'esbuild' \| 'bun' \| 'auto'`        | `'auto'`        | Bundler backend to use              |
 | `buildOptions`               | `esbuild.BuildOptions`                | -               | Additional esbuild options          |
 | `plugins`                    | `BundlerPlugin[]`                     | `[]`            | Bundler plugins                     |
@@ -651,14 +654,13 @@ bundle-temporal-workflow doctor
 
 These options are enforced and cannot be overridden to preserve workflow type inference and determinism:
 
-| Option        | Value   | Reason                               |
-| ------------- | ------- | ------------------------------------ |
-| `bundle`      | `true`  | Required for workflow isolation      |
-| `format`      | `'cjs'` | Temporal's sandbox requires CommonJS |
-| `minify`      | `false` | Preserves workflow function names    |
-| `treeShaking` | `false` | Preserves workflow exports           |
-| `splitting`   | `false` | Not supported in workflow sandbox    |
-| `keepNames`   | `true`  | Required for workflow type inference |
+| Option      | Value   | Reason                               |
+| ----------- | ------- | ------------------------------------ |
+| `bundle`    | `true`  | Required for workflow isolation      |
+| `format`    | `'cjs'` | Temporal's sandbox requires CommonJS |
+| `minify`    | `false` | Preserves workflow function names    |
+| `splitting` | `false` | Not supported in workflow sandbox    |
+| `keepNames` | `true`  | Required for workflow type inference |
 
 ## Troubleshooting
 

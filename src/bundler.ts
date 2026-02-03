@@ -83,9 +83,6 @@ const ENFORCED_OPTIONS: Partial<esbuild.BuildOptions> = {
   minifySyntax: false,
   minifyWhitespace: false,
 
-  // SAFETY: Prevent removal of exports discovered by string name
-  treeShaking: false,
-
   // SAFETY: Single file output
   splitting: false,
 
@@ -166,9 +163,6 @@ function validateUserOptions(opts: Partial<esbuild.BuildOptions> | undefined): v
   if (opts.minifyIdentifiers === true) {
     violations.push('minifyIdentifiers: true breaks workflow type names');
   }
-  if (opts.treeShaking === true) {
-    violations.push('treeShaking: true may remove workflow exports');
-  }
   if (opts.splitting === true) {
     violations.push('splitting: true not supported in workflow isolate');
   }
@@ -203,6 +197,7 @@ export class WorkflowCodeBundler {
   readonly denoConfigPath: string | undefined;
   readonly importMapPath: string | undefined;
   readonly tsconfigPath: string | undefined;
+  readonly treeShaking: boolean;
   readonly bundler: 'esbuild' | 'bun';
 
   constructor(options: BundleOptions) {
@@ -233,6 +228,7 @@ export class WorkflowCodeBundler {
       resolvedOptions.tsconfigPath,
       resolvedOptions.workflowsPath,
     );
+    this.treeShaking = resolvedOptions.treeShaking !== false;
     this.bundler = resolveBundlerBackend(resolvedOptions.bundler, this.logger);
 
     // Validate user options (only relevant for esbuild backend)
@@ -329,6 +325,11 @@ export class WorkflowCodeBundler {
 
         // Enforced options (override user)
         ...ENFORCED_OPTIONS,
+
+        // Tree shaking is safe: the synthetic entrypoint require()s the
+        // entire workflow module, so esbuild treats all workflow exports
+        // as used. Only unreachable code in dependencies gets dropped.
+        treeShaking: this.treeShaking,
 
         // Source map configuration
         sourcemap: this.sourceMap === 'none' ? false : this.sourceMap,
@@ -543,6 +544,11 @@ export class WorkflowCodeBundler {
 
       // Enforced options (override user)
       ...ENFORCED_OPTIONS,
+
+      // Tree shaking is safe: the synthetic entrypoint require()s the
+      // entire workflow module, so esbuild treats all workflow exports
+      // as used. Only unreachable code in dependencies gets dropped.
+      treeShaking: this.treeShaking,
 
       // Source map configuration
       sourcemap: this.sourceMap === 'none' ? false : this.sourceMap,

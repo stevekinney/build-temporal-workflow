@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - Unreleased
+
+### Changed
+
+- Tree shaking is now enabled by default. Unused code in transitive dependencies is eliminated from workflow bundles, reducing bundle size. All workflow exports are preserved because the synthetic entrypoint requires the entire workflow module.
+
+### Added
+
+- `treeShaking` option in `BundleOptions` to control tree shaking (default: `true`, set `false` to opt out).
+
 ## [0.3.0] - Unreleased
 
 ### Added

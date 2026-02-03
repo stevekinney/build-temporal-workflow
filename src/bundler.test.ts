@@ -303,17 +303,6 @@ describeBundlerModes('WorkflowCodeBundler', (bundler) => {
       ).rejects.toThrow(WorkflowBundleError);
     });
 
-    it.skipIf(bundler === 'bun')('throws for treeShaking: true', async () => {
-      // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().rejects returns a Promise
-      await expect(
-        bundleWorkflowCode({
-          workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
-          buildOptions: { treeShaking: true },
-          bundler,
-        }),
-      ).rejects.toThrow(WorkflowBundleError);
-    });
-
     it.skipIf(bundler === 'bun')('throws for format: esm', async () => {
       // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().rejects returns a Promise
       await expect(
@@ -333,6 +322,29 @@ describeBundlerModes('WorkflowCodeBundler', (bundler) => {
           bundler,
         }),
       ).rejects.toThrow(WorkflowBundleError);
+    });
+  });
+
+  describe('tree shaking', () => {
+    it('enables tree shaking by default', async () => {
+      const bundle = await bundleWorkflowCode({
+        workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
+      });
+
+      expect(bundle.code).toBeDefined();
+      expect(bundle.code).toContain('__TEMPORAL__');
+    });
+
+    it('produces a valid bundle with treeShaking: false', async () => {
+      const bundle = await bundleWorkflowCode({
+        workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        treeShaking: false,
+        bundler,
+      });
+
+      expect(bundle.code).toBeDefined();
+      expect(bundle.code).toContain('__TEMPORAL__');
     });
   });
 

@@ -84,13 +84,23 @@ export interface BundleOptions {
   sourceMap?: 'inline' | 'external' | 'none' | undefined;
 
   /**
+   * Enable esbuild tree shaking to eliminate unused code from dependencies.
+   *
+   * All workflow exports are preserved regardless of this setting because
+   * the synthetic entrypoint requires the entire workflow module.
+   * Tree shaking only removes dead code in transitive dependencies.
+   *
+   * Default: true
+   */
+  treeShaking?: boolean | undefined;
+
+  /**
    * Additional esbuild options to merge with the bundler defaults.
    *
    * Note: Some options are enforced and cannot be overridden:
    * - bundle: true
    * - format: 'cjs'
    * - minify: false (breaks workflow type names)
-   * - treeShaking: false (may remove workflow exports)
    * - splitting: false (not supported in workflow isolate)
    * - keepNames: true (preserves function names)
    */
