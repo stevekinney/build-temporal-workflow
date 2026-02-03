@@ -251,6 +251,93 @@ Supports:
 - Import maps
 - Bun's `bun:` builtins
 
+### Static File Imports
+
+Import Markdown, TOML, YAML, and text files directly in your workflow code using opt-in plugins. Files are read and embedded at build time:
+
+```typescript
+import { bundleWorkflowCode } from 'build-temporal-workflow';
+import { textLoader, tomlLoader, yamlLoader } from 'build-temporal-workflow/plugins';
+
+const bundle = await bundleWorkflowCode({
+  workflowsPath: './src/workflows.ts',
+  buildOptions: {
+    plugins: [textLoader(), tomlLoader(), yamlLoader()],
+  },
+});
+```
+
+Then in your workflow code:
+
+```typescript
+import readme from './README.md'; // string
+import config from './config.toml'; // parsed object
+import data from './data.yaml'; // parsed object
+import notes from './notes.txt'; // string
+```
+
+| Plugin           | Default Extensions | Import Result                   |
+| ---------------- | ------------------ | ------------------------------- |
+| `textLoader`     | `.txt`, `.md`      | String (file contents)          |
+| `markdownLoader` | `.md`              | String (file contents)          |
+| `tomlLoader`     | `.toml`            | Parsed object (via `smol-toml`) |
+| `yamlLoader`     | `.yaml`, `.yml`    | Parsed object (via `yaml`)      |
+
+Each plugin can be imported individually or all at once:
+
+```typescript
+// Individual imports
+import { textLoader } from 'build-temporal-workflow/plugins/text';
+import { markdownLoader } from 'build-temporal-workflow/plugins/markdown';
+import { tomlLoader } from 'build-temporal-workflow/plugins/toml';
+import { yamlLoader } from 'build-temporal-workflow/plugins/yaml';
+
+// Or import all from the plugins module
+import { textLoader, tomlLoader, yamlLoader } from 'build-temporal-workflow/plugins';
+```
+
+Custom extensions are supported:
+
+```typescript
+// Handle additional extensions
+textLoader({ extensions: ['.txt', '.md', '.text', '.ascii'] });
+yamlLoader({ extensions: ['.yaml', '.yml', '.eyaml'] });
+```
+
+The official `@temporalio/worker` bundler can do this too, but requires manual webpack configuration and installing additional loaders:
+
+```typescript
+// With @temporalio/worker, you'd need:
+bundleWorkflowCode({
+  workflowsPath: '...',
+  webpackConfigHook: (config) => {
+    config.module.rules.push(
+      { test: /\.md$/, type: 'asset/source' },
+      { test: /\.toml$/, loader: 'toml-loader' },
+      { test: /\.ya?ml$/, loader: 'yaml-loader' },
+    );
+    return config;
+  },
+});
+// Plus: npm install toml-loader yaml-loader
+```
+
+For TypeScript support, add the type declarations to your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "types": ["build-temporal-workflow/types"]
+  }
+}
+```
+
+Or use a triple-slash directive:
+
+```typescript
+/// <reference types="build-temporal-workflow/types" />
+```
+
 ### Workflow Manifests
 
 Generate manifests for debugging and validation:
@@ -272,6 +359,114 @@ console.log(diff.added); // New workflows
 console.log(diff.removed); // Deleted workflows
 console.log(diff.changed); // Modified workflows
 ```
+
+## Build Tool Integration
+
+### Vite Plugin
+
+Import workflow bundles directly in your Vite application using a query parameter:
+
+```typescript
+// vite.config.ts
+import { temporalWorkflow } from 'build-temporal-workflow/vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [temporalWorkflow()],
+});
+```
+
+Then import workflows with the `?workflow` query parameter:
+
+```typescript
+// src/worker.ts
+import { Worker } from '@temporalio/worker';
+import bundle from './workflows?workflow';
+
+const worker = await Worker.create({
+  workflowBundle: bundle,
+  taskQueue: 'my-queue',
+});
+```
+
+The plugin also supports import attributes:
+
+```typescript
+import bundle from './workflows' with { type: 'workflow' };
+```
+
+#### Vite Plugin Options
+
+```typescript
+temporalWorkflow({
+  // Custom query parameter (default: 'workflow')
+  identifier: 'temporal',
+
+  // Pass options to bundleWorkflowCode
+  bundleOptions: {
+    sourceMap: 'external',
+    ignoreModules: ['some-lib'],
+  },
+});
+```
+
+In development mode, the plugin caches bundles and automatically rebuilds when workflow files change.
+
+### Bun Plugin
+
+Import workflow bundles directly when using Bun:
+
+```typescript
+// Register as a runtime plugin (e.g., in a preload script)
+import { temporalWorkflow } from 'build-temporal-workflow/bun';
+
+Bun.plugin(temporalWorkflow());
+```
+
+Then import workflows with the `?workflow` query parameter:
+
+```typescript
+// src/worker.ts
+import { Worker } from '@temporalio/worker';
+import bundle from './workflows?workflow';
+
+const worker = await Worker.create({
+  workflowBundle: bundle,
+  taskQueue: 'my-queue',
+});
+```
+
+The plugin also works with `Bun.build`:
+
+```typescript
+import { temporalWorkflow } from 'build-temporal-workflow/bun';
+
+await Bun.build({
+  entrypoints: ['./src/worker.ts'],
+  outdir: './dist',
+  plugins: [temporalWorkflow()],
+});
+```
+
+#### Bun Plugin Options
+
+```typescript
+temporalWorkflow({
+  // Custom query parameter (default: 'workflow')
+  identifier: 'temporal',
+
+  // Pass options to bundleWorkflowCode
+  bundleOptions: {
+    sourceMap: 'external',
+    ignoreModules: ['some-lib'],
+    buildOptions: {
+      plugins: [yamlLoader()], // Add file loader plugins
+    },
+  },
+});
+```
+
+The plugin caches bundles by path to avoid redundant builds.
 
 ## API Reference
 
@@ -658,6 +853,50 @@ const allChains = findAllDependencyChains(metafile, problematicModules);
 const formatted = formatDependencyChain(chain); // ['workflows.ts', '→ helper.ts', '→ fs']
 const summary = summarizeDependencyChain(chain); // 'workflows.ts → helper.ts → fs'
 ```
+
+### Advanced: File Loader Plugins
+
+Opt-in plugins for importing static files. Available as submodule exports for tree-shaking.
+
+```typescript
+// Import all loaders
+import {
+  textLoader,
+  markdownLoader,
+  tomlLoader,
+  yamlLoader,
+} from 'build-temporal-workflow/plugins';
+
+// Or import individually (better for tree-shaking)
+import { textLoader } from 'build-temporal-workflow/plugins/text';
+import { markdownLoader } from 'build-temporal-workflow/plugins/markdown';
+import { tomlLoader } from 'build-temporal-workflow/plugins/toml';
+import { yamlLoader } from 'build-temporal-workflow/plugins/yaml';
+
+// Use with bundleWorkflowCode
+const bundle = await bundleWorkflowCode({
+  workflowsPath: './src/workflows.ts',
+  buildOptions: {
+    plugins: [textLoader(), tomlLoader(), yamlLoader()],
+  },
+});
+
+// Or use directly with esbuild
+import * as esbuild from 'esbuild';
+
+await esbuild.build({
+  entryPoints: ['./src/index.ts'],
+  bundle: true,
+  plugins: [textLoader(), tomlLoader(), yamlLoader()],
+});
+
+// Customize extensions
+textLoader({ extensions: ['.txt', '.md', '.text'] });
+tomlLoader({ extensions: ['.toml', '.tml'] });
+yamlLoader({ extensions: ['.yaml', '.yml', '.eyaml'] });
+```
+
+Works with both esbuild and Bun.build backends.
 
 ### Advanced: Cross-Runtime Utilities
 

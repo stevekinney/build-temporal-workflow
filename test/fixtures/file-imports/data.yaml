@@ -1,0 +1,9 @@
+users:
+  - name: Alice
+    role: admin
+  - name: Bob
+    role: user
+
+settings:
+  debug: false
+  timeout: 30

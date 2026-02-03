@@ -198,6 +198,7 @@ export class WorkflowCodeBundler {
         denoConfigPath: this.denoConfigPath,
         importMapPath: this.importMapPath,
         logger: this.logger,
+        ...(this.buildOptions && { buildOptions: this.buildOptions }),
       });
     }
 

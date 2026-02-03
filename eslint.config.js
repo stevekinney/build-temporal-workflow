@@ -84,6 +84,7 @@ export default [
       '**/*.lock',
       '**/README.md',
       '**/package.json',
+      'src/types.d.ts', // Ambient declaration file, copied directly to dist
     ],
   },
 

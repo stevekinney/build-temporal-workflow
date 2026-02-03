@@ -12,6 +12,39 @@
       "types": "./dist/vite-plugin.d.ts",
       "import": "./dist/vite-plugin.js",
       "default": "./dist/vite-plugin.js"
+    },
+    "./bun": {
+      "types": "./dist/bun-plugin.d.ts",
+      "import": "./dist/bun-plugin.js",
+      "default": "./dist/bun-plugin.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts"
+    },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "import": "./dist/plugins/index.js",
+      "default": "./dist/plugins/index.js"
+    },
+    "./plugins/text": {
+      "types": "./dist/plugins/text.d.ts",
+      "import": "./dist/plugins/text.js",
+      "default": "./dist/plugins/text.js"
+    },
+    "./plugins/markdown": {
+      "types": "./dist/plugins/markdown.d.ts",
+      "import": "./dist/plugins/markdown.js",
+      "default": "./dist/plugins/markdown.js"
+    },
+    "./plugins/toml": {
+      "types": "./dist/plugins/toml.d.ts",
+      "import": "./dist/plugins/toml.js",
+      "default": "./dist/plugins/toml.js"
+    },
+    "./plugins/yaml": {
+      "types": "./dist/plugins/yaml.d.ts",
+      "import": "./dist/plugins/yaml.js",
+      "default": "./dist/plugins/yaml.js"
     }
   },
   "types": "./dist/index.d.ts",
@@ -61,7 +94,9 @@
     ]
   },
   "dependencies": {
-    "esbuild": "^0.27.2"
+    "esbuild": "^0.27.2",
+    "smol-toml": "^1.4.0",
+    "yaml": "^2.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

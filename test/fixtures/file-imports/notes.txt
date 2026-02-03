@@ -1,0 +1,3 @@
+This is a plain text file.
+It has multiple lines.
+Used for testing the text loader.

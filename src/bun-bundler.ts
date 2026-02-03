@@ -9,6 +9,8 @@ import { existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import type * as esbuild from 'esbuild';
+
 import { createCrossRuntimePlugin, resolveCrossRuntimeConfig } from './cross-runtime';
 import { generateEntrypoint, hashEntrypoint } from './entrypoint';
 import { WorkflowBundleError } from './errors';
@@ -65,6 +67,7 @@ export async function bunBuildBundle(options: {
   denoConfigPath: string | undefined;
   importMapPath: string | undefined;
   logger: Logger;
+  buildOptions?: Partial<esbuild.BuildOptions>;
 }): Promise<WorkflowBundle> {
   const startTime = Date.now();
 
@@ -146,6 +149,9 @@ export async function bunBuildBundle(options: {
       plugins: [
         crossRuntimePlugin as unknown as import('bun').BunPlugin,
         temporalPlugin as unknown as import('bun').BunPlugin,
+        ...(options.buildOptions?.plugins ?? []).map(
+          (p) => p as unknown as import('bun').BunPlugin,
+        ),
       ],
     });
 
