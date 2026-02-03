@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 import { runAllSamples } from '../scripts/test-samples';
+import { describeBundlerModes } from './bundler-modes';
 
-describe('samples-typescript compatibility', () => {
+describeBundlerModes('samples-typescript compatibility', (bundler) => {
 	it(
 		'bundles all discovered samples without unexpected failures',
 		async () => {
-			const results = await runAllSamples();
+			const results = await runAllSamples(bundler);
 
 			const unexpected = results.filter((r) => r.status === 'fail');
 

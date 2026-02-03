@@ -7,16 +7,18 @@ import { createContext, Script } from 'node:vm';
 
 import { describe, expect, it } from 'bun:test';
 
+import { describeBundlerModes } from '../test/bundler-modes';
 import { bundleWorkflowCode, WorkflowCodeBundler } from './bundler';
 import { WorkflowBundleError } from './errors';
 
 const fixturesDir = resolve(__dirname, '../test/fixtures');
 
-describe('WorkflowCodeBundler', () => {
+describeBundlerModes('WorkflowCodeBundler', (bundler) => {
   describe('basic bundling', () => {
     it('creates a bundle from workflow path', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -27,6 +29,7 @@ describe('WorkflowCodeBundler', () => {
     it('includes __TEMPORAL__ in output', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toContain('__TEMPORAL__');
@@ -35,6 +38,7 @@ describe('WorkflowCodeBundler', () => {
     it('includes __webpack_module_cache__ reference', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toContain('__webpack_module_cache__');
@@ -44,6 +48,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         report: true,
+        bundler,
       });
 
       expect(bundle.metadata).toBeDefined();
@@ -57,6 +62,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         report: false,
+        bundler,
       });
 
       expect(bundle.metadata).toBeUndefined();
@@ -133,6 +139,7 @@ describe('WorkflowCodeBundler', () => {
     it('bundle can be evaluated in vm', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       const context = createWorkflowVmContext();
@@ -143,6 +150,7 @@ describe('WorkflowCodeBundler', () => {
     it('creates correct __TEMPORAL__ shape', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       const context = createWorkflowVmContext();
@@ -163,6 +171,7 @@ describe('WorkflowCodeBundler', () => {
       await expect(
         bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+          bundler,
         }),
       ).rejects.toThrow(WorkflowBundleError);
     });
@@ -171,6 +180,7 @@ describe('WorkflowCodeBundler', () => {
       try {
         await bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+          bundler,
         });
         expect.unreachable('Should have thrown');
       } catch (error) {
@@ -183,6 +193,7 @@ describe('WorkflowCodeBundler', () => {
       try {
         await bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+          bundler,
         });
         expect.unreachable('Should have thrown');
       } catch (error) {
@@ -192,25 +203,30 @@ describe('WorkflowCodeBundler', () => {
       }
     });
 
-    it('error includes dependency chain in context', async () => {
-      try {
-        await bundleWorkflowCode({
-          workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
-        });
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(WorkflowBundleError);
-        const bundleError = error as WorkflowBundleError;
-        // The error should have a dependency chain showing the path to the forbidden module
-        expect(bundleError.context.dependencyChain).toBeDefined();
-        expect(bundleError.context.dependencyChain?.length).toBeGreaterThan(0);
-      }
-    });
+    it.skipIf(bundler === 'bun')(
+      'error includes dependency chain in context',
+      async () => {
+        try {
+          await bundleWorkflowCode({
+            workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+            bundler,
+          });
+          expect.unreachable('Should have thrown');
+        } catch (error) {
+          expect(error).toBeInstanceOf(WorkflowBundleError);
+          const bundleError = error as WorkflowBundleError;
+          // The error should have a dependency chain showing the path to the forbidden module
+          expect(bundleError.context.dependencyChain).toBeDefined();
+          expect(bundleError.context.dependencyChain?.length).toBeGreaterThan(0);
+        }
+      },
+    );
 
-    it('error message shows dependency chain', async () => {
+    it.skipIf(bundler === 'bun')('error message shows dependency chain', async () => {
       try {
         await bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
+          bundler,
         });
         expect.unreachable('Should have thrown');
       } catch (error) {
@@ -229,6 +245,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
         ignoreModules: ['fs'],
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -238,6 +255,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'forbidden-import/workflows.ts'),
         ignoreModules: ['fs'],
+        bundler,
       });
 
       // Bundle should contain runtime throwing stub
@@ -252,6 +270,7 @@ describe('WorkflowCodeBundler', () => {
         workflowInterceptorModules: [
           resolve(fixturesDir, 'with-interceptors/interceptors.ts'),
         ],
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -263,6 +282,7 @@ describe('WorkflowCodeBundler', () => {
     it('handles node: prefixed imports for allowed builtins', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'node-prefix-imports/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -272,32 +292,35 @@ describe('WorkflowCodeBundler', () => {
   });
 
   describe('configuration validation', () => {
-    it('throws for minify: true', async () => {
+    it.skipIf(bundler === 'bun')('throws for minify: true', async () => {
       // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().rejects returns a Promise
       await expect(
         bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
           buildOptions: { minify: true },
+          bundler,
         }),
       ).rejects.toThrow(WorkflowBundleError);
     });
 
-    it('throws for treeShaking: true', async () => {
+    it.skipIf(bundler === 'bun')('throws for treeShaking: true', async () => {
       // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().rejects returns a Promise
       await expect(
         bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
           buildOptions: { treeShaking: true },
+          bundler,
         }),
       ).rejects.toThrow(WorkflowBundleError);
     });
 
-    it('throws for format: esm', async () => {
+    it.skipIf(bundler === 'bun')('throws for format: esm', async () => {
       // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().rejects returns a Promise
       await expect(
         bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
           buildOptions: { format: 'esm' },
+          bundler,
         }),
       ).rejects.toThrow(WorkflowBundleError);
     });
@@ -307,6 +330,7 @@ describe('WorkflowCodeBundler', () => {
       await expect(
         bundleWorkflowCode({
           workflowsPath: '/non/existent/path.ts',
+          bundler,
         }),
       ).rejects.toThrow(WorkflowBundleError);
     });
@@ -316,6 +340,7 @@ describe('WorkflowCodeBundler', () => {
     it('includes inline source map by default', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toContain('//# sourceMappingURL=data:');
@@ -325,6 +350,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         sourceMap: 'none',
+        bundler,
       });
 
       expect(bundle.code).not.toContain('//# sourceMappingURL=');
@@ -334,6 +360,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         sourceMap: 'external',
+        bundler,
       });
 
       expect(bundle.sourceMap).toBeDefined();
@@ -356,6 +383,7 @@ describe('WorkflowCodeBundler', () => {
             },
           },
         ],
+        bundler,
       });
 
       expect(bundle.metadata?.mode).toBe('production');
@@ -367,6 +395,7 @@ describe('WorkflowCodeBundler', () => {
       try {
         await bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'transitive-forbidden/workflows.ts'),
+          bundler,
         });
         expect.unreachable('Should have thrown');
       } catch (error) {
@@ -381,6 +410,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'transitive-forbidden/workflows.ts'),
         ignoreModules: ['dns'],
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -391,6 +421,7 @@ describe('WorkflowCodeBundler', () => {
     it('allows type-only imports of forbidden modules', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'type-only-imports/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -399,6 +430,7 @@ describe('WorkflowCodeBundler', () => {
     it('bundle from type-only imports evaluates in vm', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'type-only-imports/workflows.ts'),
+        bundler,
       });
 
       const sandbox: Record<string, unknown> = {
@@ -468,6 +500,7 @@ describe('WorkflowCodeBundler', () => {
       try {
         await bundleWorkflowCode({
           workflowsPath: resolve(fixturesDir, 'dynamic-import/workflows.ts'),
+          bundler,
         });
         expect.unreachable('Should have thrown');
       } catch (error) {
@@ -478,11 +511,12 @@ describe('WorkflowCodeBundler', () => {
   });
 
   describe('createContext', () => {
-    it('rebuild produces valid bundle', async () => {
-      const bundler = new WorkflowCodeBundler({
+    it.skipIf(bundler === 'bun')('rebuild produces valid bundle', async () => {
+      const ctx_bundler = new WorkflowCodeBundler({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
-      const ctx = await bundler.createContext();
+      const ctx = await ctx_bundler.createContext();
 
       try {
         const bundle = await ctx.rebuild();
@@ -493,11 +527,12 @@ describe('WorkflowCodeBundler', () => {
       }
     });
 
-    it('dispose cleans up without error', async () => {
-      const bundler = new WorkflowCodeBundler({
+    it.skipIf(bundler === 'bun')('dispose cleans up without error', async () => {
+      const ctx_bundler = new WorkflowCodeBundler({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
-      const ctx = await bundler.createContext();
+      const ctx = await ctx_bundler.createContext();
       // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().resolves returns a Promise
       await expect(ctx.dispose()).resolves.toBeUndefined();
     });
@@ -508,6 +543,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'deno-style/workflows.ts'),
         denoConfigPath: resolve(fixturesDir, 'deno-style/deno.json'),
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -520,6 +556,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'deno-style/workflows.ts'),
         inputFlavor: 'auto',
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -532,6 +569,7 @@ describe('WorkflowCodeBundler', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         inputFlavor: 'node',
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();

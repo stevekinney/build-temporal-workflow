@@ -78,10 +78,10 @@ async function installDeps(sampleDir: string): Promise<boolean> {
   return true;
 }
 
-async function bundleSample(sample: {
-  name: string;
-  workflowsPath: string;
-}): Promise<SampleResult> {
+async function bundleSample(
+  sample: { name: string; workflowsPath: string },
+  bundler: 'esbuild' | 'bun' = 'esbuild',
+): Promise<SampleResult> {
   const sampleDir = join(SAMPLES_DIR, sample.name);
 
   const installed = await installDeps(sampleDir);
@@ -96,6 +96,7 @@ async function bundleSample(sample: {
   try {
     const bundle = await bundleWorkflowCode({
       workflowsPath: sample.workflowsPath,
+      bundler,
     });
 
     if (!bundle.code.includes('__TEMPORAL__')) {
@@ -116,17 +117,21 @@ async function bundleSample(sample: {
   }
 }
 
-export async function runAllSamples(): Promise<SampleResult[]> {
+export async function runAllSamples(
+  bundler: 'esbuild' | 'bun' = 'esbuild',
+): Promise<SampleResult[]> {
   await cloneSamples();
 
   const samples = await discoverSamples();
-  console.log(`Discovered ${samples.length} samples with workflow files.\n`);
+  console.log(
+    `Discovered ${samples.length} samples with workflow files (bundler: ${bundler}).\n`,
+  );
 
   const results: SampleResult[] = [];
 
   for (const sample of samples) {
     process.stdout.write(`  ${sample.name} ... `);
-    const result = await bundleSample(sample);
+    const result = await bundleSample(sample, bundler);
     const detail = result.error ? ` (${result.error.slice(0, 80)})` : '';
     console.log(result.status + detail);
     results.push(result);

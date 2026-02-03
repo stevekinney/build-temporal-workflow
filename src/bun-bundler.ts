@@ -115,7 +115,7 @@ export async function bunBuildBundle(options: {
   const resolveDir = statSync(options.workflowsPath).isDirectory()
     ? options.workflowsPath
     : dirname(options.workflowsPath);
-  const tempEntrypoint = join(resolveDir, `__temporal_entrypoint_${Date.now()}__.js`);
+  const tempEntrypoint = join(resolveDir, `__temporal_entrypoint_${entryHash}__.js`);
   const tempOutdir = join(tmpdir(), `temporal-bun-out-${Date.now()}`);
 
   try {

@@ -48,18 +48,9 @@ export function generateEntrypoint(options: EntrypointOptions): string {
   // Deduplicate interceptor modules while preserving order
   const uniqueInterceptors = [...new Set(workflowInterceptorModules)];
 
-  const interceptorImports = uniqueInterceptors
-    .map((m) => `require(${JSON.stringify(m)})`)
-    .join(',\n    ');
-
-  // The stabilizeWorkflowNames function ensures that workflow function names
-  // are preserved even after minification. It works by:
-  // 1. Iterating over all exports from the workflows module
-  // 2. For each function export, setting fn.name to the export key
-  // 3. This ensures the Temporal SDK can correctly identify workflow types
-  //
-  // This is critical because Temporal uses function.name to determine the
-  // workflow type, and minifiers can mangle these names.
+  const interceptorRequires = uniqueInterceptors
+    .map((mod) => `    require(${JSON.stringify(mod)}),`)
+    .join('\n');
 
   return `// Auto-generated entrypoint for Temporal workflow bundle
 const api = require('@temporalio/workflow/lib/worker-interface.js');
@@ -73,12 +64,12 @@ overrideGlobals();
  * Sets fn.name from the export key for all function exports.
  */
 function stabilizeWorkflowNames(workflows) {
-  const stabilized = {};
-  for (const [name, value] of Object.entries(workflows)) {
+  var stabilized = {};
+  for (var [name, value] of Object.entries(workflows)) {
     if (typeof value === 'function') {
       // Define the name property to match the export key
       // This ensures workflow type names survive minification
-      Object.defineProperty(value, 'name', {
+      Object.defineProperty(value, "name", {
         value: name,
         writable: false,
         configurable: true,
@@ -90,13 +81,13 @@ function stabilizeWorkflowNames(workflows) {
 }
 
 exports.importWorkflows = function importWorkflows() {
-  const workflows = require(${JSON.stringify(workflowsPath)});
+  var workflows = require(${JSON.stringify(workflowsPath)});
   return stabilizeWorkflowNames(workflows);
 };
 
 exports.importInterceptors = function importInterceptors() {
   return [
-    ${interceptorImports}
+${interceptorRequires}
   ];
 };
 `;

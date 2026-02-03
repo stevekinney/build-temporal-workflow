@@ -1,20 +1,14 @@
 # build-temporal-workflow
 
-A faster alternative to Temporal's `bundleWorkflowCode` that uses esbuild instead of Webpack. Bundles Temporal workflow code **~8x faster** with significantly lower memory usage.
+A drop-in replacement for `@temporalio/worker`'s `bundleWorkflowCode` that swaps Webpack for esbuild (or Bun.build). Same API, same output, 9-11x faster builds, 94% less memory.
 
-## Why Use This?
+## The Problem
 
-The Temporal TypeScript SDK uses Webpack to bundle workflow code. This works fine, but Webpack is slow—especially in development and test environments where you're bundling frequently.
+Every Temporal TypeScript Worker needs to bundle workflow code into a self-contained isolate-safe package. The official SDK uses Webpack for this. Webpack works, but it was designed for frontend asset pipelines, not for bundling a few hundred KB of deterministic workflow code. The result: 500-630ms builds that allocate 50+ MB of heap, every single time. In a test suite that spins up Workers, that overhead multiplies fast.
 
-This package replaces the Webpack bundler with esbuild, providing:
+This library replaces the Webpack bundler with esbuild, which is purpose-built for speed. esbuild is written in Go, does its own parsing and code generation, and can bundle the same workflow code in 49-57ms on Node or under 32ms on Bun. Memory drops by 94%. The output is identical in structure: a CJS bundle that assigns `globalThis.__TEMPORAL__` and works with any standard Temporal Worker.
 
-- **7-8x faster builds** — Measured with statistical rigor (95% CI, outlier filtering)
-- **44-65% less memory** — Consistent memory savings across all fixture sizes
-- **Watch mode** — Rebuild automatically on file changes with esbuild's incremental builds
-- **Better error messages** — Dependency chain analysis shows exactly how a forbidden module got imported
-- **Static analysis** — Detect non-deterministic patterns before they cause replay failures
-- **Bundle caching** — In-memory caching dramatically speeds up test suites
-- **Cross-runtime support** — Bundle Deno or Bun-flavored TypeScript
+If you're running under Bun, you also get access to `Bun.build` as a backend, which is even faster for small-to-medium bundles.
 
 ## Installation
 
@@ -53,29 +47,27 @@ const worker = await Worker.create({
 });
 ```
 
-## Performance Benchmarks
+## Performance
 
-Measured on Apple M1 Max, Node v24.3.0, Bun 1.3.2:
+Measured on Apple M1 Max, Node v24.3.0, Bun 1.3.2. The `@temporalio/worker` column is the baseline (Webpack). All times are mean with 95% confidence intervals. 10 runs, 3 warmup, outliers filtered.
 
-The `@temporalio/worker` column is the baseline — it's the built-in `bundleWorkflowCode` from the Temporal TypeScript SDK (Webpack). The other columns show this library's alternatives, each with the speedup vs. the baseline.
+### Build Time
 
-Build time comparison:
+| Fixture              | @temporalio/worker |       esbuild (Node) |      Bun.build (Bun) |
+| -------------------- | -----------------: | -------------------: | -------------------: |
+| Small (~5 modules)   |       543ms ± 41ms |  59ms ± 7ms (**9x**) | 29ms ± 5ms (**19x**) |
+| Medium (~20 modules) |       499ms ± 12ms | 49ms ± 8ms (**10x**) | 25ms ± 5ms (**20x**) |
+| Large (~50+ modules) |       537ms ± 31ms |  57ms ± 8ms (**9x**) | 30ms ± 4ms (**18x**) |
+| Heavy dependencies   |      630ms ± 105ms | 55ms ± 5ms (**11x**) | 32ms ± 2ms (**20x**) |
 
-| Fixture              | @temporalio/worker |       esbuild (Node) |        esbuild (Bun) |      Bun.build (Bun) |
-| -------------------- | -----------------: | -------------------: | -------------------: | -------------------: |
-| Small (~5 modules)   |        226ms ± 5ms | 19ms ± 3ms (**12x**) | 22ms ± 4ms (**10x**) |  9ms ± 1ms (**25x**) |
-| Medium (~20 modules) |        232ms ± 6ms | 21ms ± 1ms (**11x**) | 19ms ± 3ms (**12x**) | 10ms ± 1ms (**23x**) |
-| Large (~50+ modules) |       263ms ± 10ms | 23ms ± 3ms (**11x**) | 23ms ± 3ms (**11x**) | 15ms ± 8ms (**18x**) |
-| Heavy dependencies   |       224ms ± 10ms | 22ms ± 3ms (**10x**) | 22ms ± 6ms (**10x**) |  9ms ± 1ms (**25x**) |
+### Memory Usage (Peak Heap)
 
-Memory usage comparison (peak heap):
-
-| Fixture              | @temporalio/worker |         esbuild (Node) |          esbuild (Bun) |        Bun.build (Bun) |
-| -------------------- | -----------------: | ---------------------: | ---------------------: | ---------------------: |
-| Small (~5 modules)   |           52.25 MB | 3.89 MB (**93% less**) | 2.30 MB (**96% less**) | 0.05 MB (**99% less**) |
-| Medium (~20 modules) |           50.80 MB | 3.96 MB (**92% less**) | 3.01 MB (**94% less**) | 0.05 MB (**99% less**) |
-| Large (~50+ modules) |           53.90 MB | 4.46 MB (**92% less**) | 3.24 MB (**94% less**) | 0.09 MB (**99% less**) |
-| Heavy dependencies   |           52.11 MB | 3.67 MB (**93% less**) | 5.58 MB (**89% less**) | 0.04 MB (**99% less**) |
+| Fixture              | @temporalio/worker | esbuild (Node) |      Savings |
+| -------------------- | -----------------: | -------------: | -----------: |
+| Small (~5 modules)   |           52.25 MB |        3.03 MB | **94% less** |
+| Medium (~20 modules) |           51.71 MB |        3.08 MB | **94% less** |
+| Large (~50+ modules) |           54.02 MB |        3.49 MB | **94% less** |
+| Heavy dependencies   |           52.04 MB |        2.82 MB | **95% less** |
 
 To use the Bun bundler backend:
 
@@ -92,7 +84,7 @@ Run benchmarks yourself:
 # Quick benchmark (small fixture only)
 bun run benchmark:quick
 
-# Full benchmark suite (15 runs, 5 warmup)
+# Full benchmark suite (10 runs, 3 warmup)
 bun run benchmark:full
 
 # Custom options
@@ -107,19 +99,27 @@ bun run benchmark:bun
 
 The benchmark suite includes statistical analysis with 95% confidence intervals, outlier detection (IQR method), and significance testing (Welch's t-test).
 
-## Advantages Over `@temporalio/worker`'s Built-in Bundler
+## Why This Library Exists
 
-The Temporal TypeScript SDK ships a Webpack-based `bundleWorkflowCode` in `@temporalio/worker`. This library replaces it with esbuild for dramatically faster builds while maintaining full compatibility.
+The `bundleWorkflowCode` function in `@temporalio/worker` does two things: it resolves your workflow code's dependency graph, and it concatenates everything into a single CJS file that can run inside Temporal's V8 isolate. That's it. There's no code splitting, no asset pipeline, no HMR, no loader ecosystem to support. It's a straightforward bundling job.
 
-### 1. Faster Builds
+Webpack is an extraordinarily capable tool, but its generality is a liability here. It parses its own configuration schema, initializes a plugin system, builds a module graph through its own resolution algorithm, and runs multiple optimization passes — all for a bundle that _must not be minified_ and _must not be tree-shaken_ (both break workflow determinism). The result is 500-630ms of wall time and 50+ MB of heap allocation for what amounts to concatenating ~60 modules.
 
-esbuild is written in Go and compiles code orders of magnitude faster than Webpack. This matters most in:
+esbuild does the same job in 49-59ms because it was designed from the ground up for speed: single-pass architecture, Go's compile-time optimizations, and zero configuration overhead. This library wraps esbuild with the same plugin hooks that Temporal needs (forbidden module detection, determinism policy enforcement, module stub injection) and produces output that is structurally identical to what Webpack generates.
 
-- **Development** — Faster iteration cycles
-- **Testing** — Test suites that bundle workflows run much faster
-- **CI/CD** — Faster builds mean faster deployments
+The practical impact shows up in three places:
 
-### 2. Better Error Messages
+1. **Test suites.** If your tests create Workers (and they should — integration tests catch real bugs), each test pays the bundling cost. A suite with 20 Worker-creating tests goes from ~10s of bundling overhead to ~1s with esbuild, or ~0.6s with Bun.build. Add the in-memory cache and the second through twentieth tests pay ~0ms.
+
+2. **Development iteration.** Watch mode with esbuild's incremental rebuild is nearly instant. Webpack's watch mode works but carries the same per-build overhead.
+
+3. **CI pipelines.** Faster bundling means faster deployments. The memory savings also matter in constrained CI environments where you're running multiple jobs on shared runners.
+
+This library is a drop-in replacement. Same function signature, same output shape, same `WorkflowBundle` type. Swap the import and your Workers keep working.
+
+## Features
+
+### Better Error Messages
 
 When a forbidden module is imported (like `fs` or `http`), this bundler shows the complete dependency chain:
 
@@ -135,7 +135,7 @@ Dependency chain:
 Hint: Move file operations to Activities, which run outside the workflow sandbox.
 ```
 
-### 3. Watch Mode
+### Watch Mode
 
 Automatically rebuild when source files change:
 
@@ -164,14 +164,14 @@ const handle = await watchWorkflowCode(
 await handle.stop();
 ```
 
-### 4. Bundle Caching
+### Bundle Caching
 
 Cache bundles in memory for dramatically faster test suites:
 
 ```typescript
 import { getCachedBundle } from 'build-temporal-workflow';
 
-// First call builds the bundle (~25ms)
+// First call builds the bundle (~50ms)
 const bundle = await getCachedBundle({
   workflowsPath: require.resolve('./workflows'),
 });
@@ -184,7 +184,7 @@ const sameBundleAgain = await getCachedBundle({
 
 Cache is automatically invalidated when workflow files change.
 
-### 5. Pre-built Bundle Loading
+### Pre-built Bundle Loading
 
 Build bundles in CI and load them at runtime without rebuilding:
 
@@ -206,7 +206,7 @@ const worker = await Worker.create({
 });
 ```
 
-### 6. Replay Safety Analysis
+### Replay Safety Analysis
 
 Detect non-deterministic patterns that will break workflow replay:
 
@@ -232,7 +232,7 @@ Detects patterns like:
 - `fetch`/`axios` — Move to Activities
 - `crypto.randomBytes()` — Use `workflow.uuid4()` or move to Activities
 
-### 7. Cross-Runtime Support
+### Cross-Runtime Support
 
 Bundle workflows written for Deno or Bun:
 
@@ -251,7 +251,7 @@ Supports:
 - Import maps
 - Bun's `bun:` builtins
 
-### 8. Workflow Manifests
+### Workflow Manifests
 
 Generate manifests for debugging and validation:
 
@@ -341,6 +341,9 @@ const bundle = await bundleWorkflowCode({
 
   // Optional: Input flavor for cross-runtime support
   inputFlavor: 'node' | 'deno' | 'bun' | 'auto',
+
+  // Optional: Bundler backend (default: 'auto')
+  bundler: 'esbuild' | 'bun' | 'auto',
 
   // Optional: Additional esbuild options
   buildOptions: {

@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
+import { type BundlerMode, describeBundlerModes } from '../test/bundler-modes';
 import { bundleWorkflowCode } from './bundler';
 import {
   clearBundleCache,
@@ -19,7 +20,7 @@ import {
 const fixturesDir = resolve(__dirname, '../test/fixtures');
 const tempDir = resolve(__dirname, '../test/temp-loader');
 
-describe('loader', () => {
+describeBundlerModes('loader', (bundler: BundlerMode) => {
   beforeAll(() => {
     // Create temp directory for test outputs
     if (!existsSync(tempDir)) {
@@ -40,10 +41,11 @@ describe('loader', () => {
       // First, create a bundle
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       // Write it to disk
-      const bundlePath = join(tempDir, 'test-bundle.js');
+      const bundlePath = join(tempDir, `test-bundle-${bundler}.js`);
       writeFileSync(bundlePath, bundle.code);
 
       if (bundle.sourceMap) {
@@ -65,7 +67,7 @@ describe('loader', () => {
 
     it('validates bundle structure by default', () => {
       // Create an invalid bundle
-      const invalidPath = join(tempDir, 'invalid-bundle.js');
+      const invalidPath = join(tempDir, `invalid-bundle-${bundler}.js`);
       writeFileSync(invalidPath, 'console.log("not a workflow bundle")');
 
       expect(() => loadBundle({ path: invalidPath })).toThrow();
@@ -73,7 +75,7 @@ describe('loader', () => {
 
     it('skips validation when validate is false', () => {
       // Create an invalid bundle
-      const invalidPath = join(tempDir, 'invalid-skip-validate.js');
+      const invalidPath = join(tempDir, `invalid-skip-validate-${bundler}.js`);
       writeFileSync(invalidPath, 'console.log("not a workflow bundle")');
 
       const result = loadBundle({
@@ -89,10 +91,11 @@ describe('loader', () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         report: true,
+        bundler,
       });
 
       // Write it to disk
-      const bundlePath = join(tempDir, 'version-test-bundle.js');
+      const bundlePath = join(tempDir, `version-test-bundle-${bundler}.js`);
       writeFileSync(bundlePath, bundle.code);
 
       // Load with mismatched version
@@ -118,6 +121,7 @@ describe('loader', () => {
 
       const bundle = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       expect(bundle.code).toBeDefined();
@@ -133,11 +137,13 @@ describe('loader', () => {
       // First call - builds
       const bundle1 = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       // Second call - should be cached
       const bundle2 = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       // Should be the exact same object (not just equal)
@@ -150,12 +156,14 @@ describe('loader', () => {
       // First call
       const bundle1 = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       // Force rebuild
       const bundle2 = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         forceRebuild: true,
+        bundler,
       });
 
       // Should be different objects (rebuilt)
@@ -170,11 +178,13 @@ describe('loader', () => {
       const bundle1 = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         mode: 'development',
+        bundler,
       });
 
       const bundle2 = await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
         mode: 'production',
+        bundler,
       });
 
       const stats = getBundleCacheStats();
@@ -190,6 +200,7 @@ describe('loader', () => {
       // Add some entries
       await getCachedBundle({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
       });
 
       let stats = getBundleCacheStats();
@@ -207,10 +218,11 @@ describe('loader', () => {
       clearBundleCache();
 
       const bundles = await preloadBundles([
-        { workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts') },
+        { workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'), bundler },
         {
           workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
           mode: 'production',
+          bundler,
         },
       ]);
 

@@ -171,7 +171,7 @@ describe('entrypoint', () => {
         workflowInterceptorModules: [],
       });
 
-      expect(code).toContain("Object.defineProperty(value, 'name'");
+      expect(code).toContain('Object.defineProperty(value, "name"');
     });
 
     it('applies stabilization in importWorkflows', () => {

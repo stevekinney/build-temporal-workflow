@@ -272,6 +272,32 @@ function isTypeOnlyImport(
 }
 
 /**
+ * Create a stub module that throws when any export is accessed.
+ *
+ * Uses a Proxy-based default export so that both CJS require() and ESM
+ * named imports (import { foo } from '...') trigger a runtime error.
+ * Bun.build resolves ESM imports during bundling, so bare `throw` at
+ * the top level doesn't work — the bundler needs to see valid exports.
+ */
+function createStubModule(errorMessage: string): string {
+  const escaped = JSON.stringify(errorMessage);
+  return `var handler = {
+  get: function(_, prop) {
+    if (prop === "__esModule" || prop === "default" || prop === Symbol.toStringTag) return;
+    throw new Error(${escaped});
+  },
+  apply: function() {
+    throw new Error(${escaped});
+  }
+};
+var stub = new Proxy(function(){}, handler);
+module.exports = stub;
+module.exports.__esModule = true;
+module.exports.default = stub;
+`;
+}
+
+/**
  * Infer the esbuild loader from a file extension.
  */
 function inferLoader(filePath: string): esbuild.Loader {
@@ -484,31 +510,27 @@ export function createTemporalPlugin(
       });
 
       build.onLoad({ filter: /.*/, namespace: 'temporal-ignored' }, (args) => ({
-        contents: `
-          throw new Error(
-            'Module "${args.path}" was ignored during bundling but was executed at runtime. ' +
+        contents: createStubModule(
+          `Module "${args.path}" was ignored during bundling but was executed at runtime. ` +
             'This indicates the module is actually used in workflow code. ' +
-            "Move this usage to an Activity or remove it from 'ignoreModules'."
-          );
-        `,
+            "Move this usage to an Activity or remove it from 'ignoreModules'.",
+        ),
         loader: 'js',
       }));
 
       // Type-only imports are erased at compile time, so we return an empty module
       // This is safe because TypeScript only uses these imports for type checking
       build.onLoad({ filter: /.*/, namespace: 'temporal-type-only' }, () => ({
-        contents: '// Type-only import - erased at compile time',
+        contents: '// Type-only import - erased at compile time\nexport default {};',
         loader: 'js',
       }));
 
       // Stub for forbidden modules - the bundler will check state.foundProblematicModules
       // after the build and throw a proper error
       build.onLoad({ filter: /.*/, namespace: 'temporal-forbidden' }, (args) => ({
-        contents: `
-          throw new Error(
-            'Module "${args.path}" is forbidden in workflow code as it may break determinism.'
-          );
-        `,
+        contents: createStubModule(
+          `Module "${args.path}" is forbidden in workflow code as it may break determinism.`,
+        ),
         loader: 'js',
       }));
 
