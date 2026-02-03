@@ -431,6 +431,11 @@ export function createTemporalPlugin(
       // Builtins are handled above; this catches packages like @temporalio/activity
       // ============================================================
       build.onResolve({ filter: /.*/ }, (args) => {
+        // Early return for relative/absolute imports — these can never be forbidden/ignored
+        if (args.path[0] === '.' || args.path[0] === '/') {
+          return null;
+        }
+
         const normalized = normalizeSpecifier(args.path);
 
         // Note: Builtins are already handled by BUILTIN_PATTERN handler above.
@@ -526,6 +531,12 @@ export function createTemporalPlugin(
           importerContentsCache.set(args.path, contents);
         }
 
+        // Quick guard: skip regex work if no dynamic imports possible
+        if (!contents.includes('import(')) {
+          const loader = inferLoader(args.path);
+          return { contents, loader };
+        }
+
         // Check for dynamic import() expressions
         // Pattern matches: import(...) but not import type or import from
         const dynamicImportPattern = /\bimport\s*\(\s*[^)]+\s*\)/g;
@@ -549,10 +560,16 @@ export function createTemporalPlugin(
             continue;
           }
 
-          // Calculate line and column
-          const lines = beforeMatch.split('\n');
-          const line = lines.length;
-          const column = (lines[lines.length - 1]?.length ?? 0) + 1;
+          // Calculate line and column by counting newlines (avoids allocating array)
+          let line = 1;
+          let lastNewlinePos = -1;
+          for (let i = 0; i < beforeMatch.length; i++) {
+            if (beforeMatch[i] === '\n') {
+              line++;
+              lastNewlinePos = i;
+            }
+          }
+          const column = match.index - lastNewlinePos;
 
           state.dynamicImports.push({
             file: args.path,

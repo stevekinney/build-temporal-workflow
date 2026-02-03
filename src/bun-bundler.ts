@@ -14,7 +14,7 @@ import { generateEntrypoint, hashEntrypoint } from './entrypoint';
 import { WorkflowBundleError } from './errors';
 import { createTemporalPlugin } from './esbuild-plugin';
 import { loadDeterminismPolicy } from './policy';
-import { generateBundleHash, shimEsbuildOutput, validateShimmedOutput } from './shim';
+import { shimEsbuildOutput, validateShimmedOutput } from './shim';
 import type { BundleMetadata, InputFlavor, Logger, WorkflowBundle } from './types';
 import { getBundlerVersion, getTemporalSdkVersion } from './validate';
 
@@ -266,8 +266,7 @@ function processOutput(
   warnings: string[] = [],
 ): WorkflowBundle {
   // Apply shim
-  const bundleHash = generateBundleHash(code);
-  const shimmedCode = shimEsbuildOutput(code, bundleHash);
+  const shimmedCode = shimEsbuildOutput(code);
 
   // Validate shimmed output
   const shimValidation = validateShimmedOutput(shimmedCode);

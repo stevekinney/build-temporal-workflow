@@ -7,8 +7,6 @@
  * 2. Expose the bundle exports as globalThis.__TEMPORAL__
  */
 
-import { createHash } from 'node:crypto';
-
 /**
  * Apply the shim to esbuild output.
  *
@@ -18,29 +16,12 @@ import { createHash } from 'node:crypto';
  * - Exposes exports as globalThis.__TEMPORAL__
  *
  * @param code - The raw esbuild output
- * @param bundleHash - A hash to namespace module IDs and prevent collisions
  * @returns The shimmed bundle code
  */
-export function shimEsbuildOutput(code: string, bundleHash: string): string {
-  // esbuild output needs to be wrapped to expose __TEMPORAL__ and share module cache
-  return wrapEsbuildOutput(code, bundleHash);
-}
-
-/**
- * Wrap esbuild output to expose __TEMPORAL__ and share module cache.
- */
-function wrapEsbuildOutput(code: string, bundleHash: string): string {
-  // esbuild's CJS output format varies, but typically:
-  // - Uses var for module exports
-  // - May use __require for CommonJS require
-  // - Exports to module.exports
-  //
-  // We wrap the entire output and capture the exports
-
+export function shimEsbuildOutput(code: string): string {
   return `(function() {
   // Initialize shared module cache for v8 isolate reuse
   globalThis.__webpack_module_cache__ = globalThis.__webpack_module_cache__ || {};
-  var __bundleHash__ = ${JSON.stringify(bundleHash)};
 
   // Create a fake module object to capture exports
   var module = { exports: {} };
@@ -53,18 +34,6 @@ function wrapEsbuildOutput(code: string, bundleHash: string): string {
   globalThis.__TEMPORAL__ = module.exports;
 })();
 `;
-}
-
-/**
- * Generate a hash for the bundle to use for module ID namespacing.
- * Uses Bun's fast native hash function when available, falls back to Node.js crypto.
- */
-export function generateBundleHash(entrypointContent: string): string {
-  if (typeof globalThis.Bun?.hash === 'function') {
-    const hash = Bun.hash(entrypointContent);
-    return hash.toString(16).slice(0, 8);
-  }
-  return createHash('sha256').update(entrypointContent).digest('hex').slice(0, 8);
 }
 
 /**

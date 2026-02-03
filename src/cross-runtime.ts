@@ -511,6 +511,9 @@ export function createCrossRuntimePlugin(
   return {
     name: 'temporal-cross-runtime',
     setup(build) {
+      // Pre-compute base directory for resolving relative import map paths
+      const baseDir = dirname(config.importMapPath ?? workflowsPath);
+
       // Apply import map resolution
       if (importMap?.imports) {
         const imports = importMap.imports;
@@ -536,7 +539,7 @@ export function createCrossRuntimePlugin(
               mapped.startsWith('/')
             ) {
               return {
-                path: resolve(dirname(config.importMapPath ?? workflowsPath), mapped),
+                path: resolve(baseDir, mapped),
               };
             }
 
@@ -602,10 +605,12 @@ export function createCrossRuntimePlugin(
 
         // Determine loader based on content type and file extension
         let loader: esbuild.Loader = 'js';
-        if (args.path.endsWith('.ts') || args.path.endsWith('.tsx')) {
-          loader = 'ts';
-        } else if (args.path.endsWith('.tsx') || args.path.endsWith('.jsx')) {
+        if (args.path.endsWith('.tsx')) {
           loader = 'tsx';
+        } else if (args.path.endsWith('.jsx')) {
+          loader = 'jsx';
+        } else if (args.path.endsWith('.ts')) {
+          loader = 'ts';
         } else if (cache.contentType?.includes('typescript')) {
           loader = 'ts';
         }

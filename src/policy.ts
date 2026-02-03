@@ -106,8 +106,22 @@ export function moduleMatches(userModule: string, modules: string[]): boolean {
   const normalized = normalizeSpecifier(userModule);
   const exactSet = getModuleSet(modules);
   if (exactSet.has(normalized)) return true;
-  // Check subpath imports (e.g., 'fs/promises' matches 'fs')
-  return modules.some((m) => normalized.startsWith(`${m}/`));
+
+  // Check subpath imports using Set lookup instead of O(N) scan
+  const slashIndex = normalized.indexOf('/');
+  if (slashIndex === -1) return false;
+
+  // Handle scoped packages: @scope/name/subpath → check "@scope/name"
+  if (normalized[0] === '@') {
+    const secondSlash = normalized.indexOf('/', slashIndex + 1);
+    if (secondSlash !== -1) {
+      return exactSet.has(normalized.slice(0, secondSlash));
+    }
+    return false;
+  }
+
+  // Unscoped: fs/promises → check "fs"
+  return exactSet.has(normalized.slice(0, slashIndex));
 }
 
 /**

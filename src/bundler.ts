@@ -17,7 +17,7 @@ import { generateEntrypoint, hashEntrypoint } from './entrypoint';
 import { WorkflowBundleError } from './errors';
 import { createTemporalPlugin } from './esbuild-plugin';
 import { loadDeterminismPolicy } from './policy';
-import { generateBundleHash, shimEsbuildOutput } from './shim';
+import { shimEsbuildOutput } from './shim';
 import type {
   BundleContext,
   BundleMetadata,
@@ -319,47 +319,24 @@ export class WorkflowCodeBundler {
     if (pluginState.foundProblematicModules.size > 0) {
       const modules = Array.from(pluginState.foundProblematicModules.keys());
 
-      // Rebuild with metafile enabled to get dependency chains for the error message
+      // Use metafile from the initial build to get dependency chains for the error message
       let dependencyChain: string[] | undefined;
-      try {
-        const metafileResult = await esbuild.build({
-          ...this.buildOptions,
-          ...ENFORCED_OPTIONS,
-          sourcemap: this.sourceMap === 'none' ? false : this.sourceMap,
-          stdin: {
-            contents: entrypointCode,
-            resolveDir: dirname(this.workflowsPath),
-            sourcefile: entrypointPath,
-            loader: 'js',
-          },
-          outfile: 'workflow-bundle.js',
-          metafile: true,
-          plugins: [
-            crossRuntimePlugin,
-            temporalPlugin,
-            ...(this.buildOptions?.plugins ?? []),
-          ],
-        });
+      if (result.metafile) {
+        const chains = findAllDependencyChains(
+          result.metafile,
+          pluginState.foundProblematicModules,
+        );
 
-        if (metafileResult.metafile) {
-          const chains = findAllDependencyChains(
-            metafileResult.metafile,
-            pluginState.foundProblematicModules,
-          );
-
-          for (const [moduleName, chain] of chains) {
-            if (chain && chain.length > 0) {
-              dependencyChain = formatDependencyChain(chain);
-              this.logger.debug('Found dependency chain for forbidden module', {
-                module: moduleName,
-                chain: dependencyChain,
-              });
-              break;
-            }
+        for (const [moduleName, chain] of chains) {
+          if (chain && chain.length > 0) {
+            dependencyChain = formatDependencyChain(chain);
+            this.logger.debug('Found dependency chain for forbidden module', {
+              module: moduleName,
+              chain: dependencyChain,
+            });
+            break;
           }
         }
-      } catch {
-        // If the metafile rebuild fails, we still report the error without chains
       }
 
       const details = Array.from(pluginState.foundProblematicModules.entries())
@@ -410,8 +387,7 @@ export class WorkflowCodeBundler {
     // Apply shim to the output
     // Hash the actual bundle content to prevent module cache collisions
     // when workflow code changes but entrypoint config stays the same
-    const bundleHash = generateBundleHash(bundleFile.text);
-    const shimmedCode = shimEsbuildOutput(bundleFile.text, bundleHash);
+    const shimmedCode = shimEsbuildOutput(bundleFile.text);
 
     const buildTime = Date.now() - startTime;
     const sizeKB = (shimmedCode.length / 1024).toFixed(1);
@@ -714,8 +690,7 @@ export class WorkflowCodeBundler {
     }
 
     // Apply shim to the output
-    const bundleHash = generateBundleHash(bundleFile.text);
-    const shimmedCode = shimEsbuildOutput(bundleFile.text, bundleHash);
+    const shimmedCode = shimEsbuildOutput(bundleFile.text);
 
     // Build metadata
     const metadata: BundleMetadata | undefined = this.report
