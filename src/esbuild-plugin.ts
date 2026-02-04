@@ -3,7 +3,7 @@
  *
  * Handles:
  * - Module resolution for allowed builtins (assert, url, util)
- * - Converter aliasing (__temporal_custom_payload_converter$, etc.)
+ * - Converter aliasing (__temporal_custom_payload_converter, etc.)
  * - Forbidden module detection and blocking
  * - OpenTelemetry module replacement
  * - Ignored modules (with runtime-throwing stubs)
@@ -403,24 +403,24 @@ export function createTemporalPlugin(
       // ============================================================
       // 2. Handle converter aliases
       // ============================================================
-      build.onResolve({ filter: /^__temporal_custom_payload_converter\$$/ }, () => {
+      build.onResolve({ filter: /^__temporal_custom_payload_converter$/ }, () => {
         if (payloadConverterPath) {
           return { path: payloadConverterPath };
         }
         // No converter provided - resolve to stub
         return {
-          path: '__temporal_custom_payload_converter$',
+          path: '__temporal_custom_payload_converter',
           namespace: 'temporal-converter-stub',
         };
       });
 
-      build.onResolve({ filter: /^__temporal_custom_failure_converter\$$/ }, () => {
+      build.onResolve({ filter: /^__temporal_custom_failure_converter$/ }, () => {
         if (failureConverterPath) {
           return { path: failureConverterPath };
         }
         // No converter provided - resolve to stub
         return {
-          path: '__temporal_custom_failure_converter$',
+          path: '__temporal_custom_failure_converter',
           namespace: 'temporal-converter-stub',
         };
       });
