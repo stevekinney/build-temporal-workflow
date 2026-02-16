@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-16
+
+### Fixed
+
+- Ensured shimmed bundles keep the inline `sourceMappingURL` directive as final non-whitespace content so Temporal's parser can decode sourcemaps reliably.
+- Added regression tests for shimmed output and bundled output to guard against executable code trailing inline sourcemap payloads.
+
 ## [0.3.2] - Unreleased
 
 ### Changed

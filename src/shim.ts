@@ -19,7 +19,9 @@
  * @returns The shimmed bundle code
  */
 export function shimEsbuildOutput(code: string): string {
-  return `(function() {
+  const { bundleCode, sourceMapDirective } = extractTrailingSourceMapDirective(code);
+
+  const shimmedCode = `(function() {
   // Initialize shared module cache for v8 isolate reuse
   globalThis.__webpack_module_cache__ = globalThis.__webpack_module_cache__ || {};
 
@@ -28,12 +30,41 @@ export function shimEsbuildOutput(code: string): string {
   var exports = module.exports;
 
   // Original esbuild output
-  ${code}
+  ${bundleCode}
 
   // Expose as __TEMPORAL__ for Worker consumption
   globalThis.__TEMPORAL__ = module.exports;
 })();
 `;
+
+  // Temporal parses inline source maps from `base64,` to EOF, so keep the
+  // source map directive as the final non-whitespace content.
+  if (sourceMapDirective) {
+    return `${shimmedCode}${sourceMapDirective}\n`;
+  }
+
+  return shimmedCode;
+}
+
+const TRAILING_SOURCE_MAP_DIRECTIVE =
+  /(?:\r?\n|^)(\/\/# sourceMappingURL=[^\r\n]+|\/\*# sourceMappingURL=[\s\S]*?\*\/)\s*$/;
+
+function extractTrailingSourceMapDirective(code: string): {
+  bundleCode: string;
+  sourceMapDirective: string | undefined;
+} {
+  const match = code.match(TRAILING_SOURCE_MAP_DIRECTIVE);
+  if (!match?.[1]) {
+    return {
+      bundleCode: code,
+      sourceMapDirective: undefined,
+    };
+  }
+
+  return {
+    bundleCode: code.slice(0, match.index),
+    sourceMapDirective: match[1],
+  };
 }
 
 /**

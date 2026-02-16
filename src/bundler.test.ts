@@ -358,6 +358,25 @@ describeBundlerModes('WorkflowCodeBundler', (bundler) => {
       expect(bundle.code).toContain('//# sourceMappingURL=data:');
     });
 
+    it('keeps inline source map as the final non-whitespace bundle content', async () => {
+      const bundle = await bundleWorkflowCode({
+        workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),
+        bundler,
+      });
+
+      const trimmed = bundle.code.trimEnd();
+      const sourceMapDirectiveIndex = trimmed.lastIndexOf('//# sourceMappingURL=data:');
+
+      expect(sourceMapDirectiveIndex).toBeGreaterThan(-1);
+      const trailingText = trimmed
+        .slice(sourceMapDirectiveIndex)
+        .split('\n')
+        .slice(1)
+        .join('\n')
+        .trim();
+      expect(trailingText).toBe('');
+    });
+
     it('excludes source map when sourceMap: none', async () => {
       const bundle = await bundleWorkflowCode({
         workflowsPath: resolve(fixturesDir, 'basic-workflow/workflows.ts'),

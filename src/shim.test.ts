@@ -6,6 +6,18 @@ import { describe, expect, it } from 'bun:test';
 
 import { shimEsbuildOutput, validateShimmedOutput } from './shim';
 
+function parseInlineSourceMapLikeTemporal(code: string): unknown {
+  const marker = 'base64,';
+  const markerIndex = code.indexOf(marker);
+  if (markerIndex === -1) {
+    throw new Error('Missing inline source map');
+  }
+
+  const encoded = code.slice(markerIndex + marker.length).trim();
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  return JSON.parse(decoded);
+}
+
 describe('shim', () => {
   describe('shimEsbuildOutput', () => {
     it('wraps esbuild output with IIFE', () => {
@@ -39,6 +51,29 @@ describe('shim', () => {
       const shimmed = shimEsbuildOutput(code);
 
       expect(shimmed).toContain('@temporalio/workflow');
+    });
+
+    it('keeps inline source map directive as final non-whitespace content', () => {
+      const mapBase64 = 'eyJ2ZXJzaW9uIjozfQ';
+      const code = `module.exports = { test: true };
+//# sourceMappingURL=data:application/json;base64,${mapBase64}
+`;
+
+      const shimmed = shimEsbuildOutput(code);
+      const trimmed = shimmed.trimEnd();
+      const directive = `//# sourceMappingURL=data:application/json;base64,${mapBase64}`;
+
+      expect(trimmed.endsWith(directive)).toBe(true);
+      expect(() => parseInlineSourceMapLikeTemporal(shimmed)).not.toThrow();
+      expect(parseInlineSourceMapLikeTemporal(shimmed)).toEqual({ version: 3 });
+    });
+
+    it('demonstrates Temporal-style parse failure when code trails inline source map', () => {
+      const broken = `module.exports = {};
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozfQ
+globalThis.__TEMPORAL__ = module.exports;`;
+
+      expect(() => parseInlineSourceMapLikeTemporal(broken)).toThrow();
     });
   });
 
